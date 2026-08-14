@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/app_info.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
@@ -184,21 +185,9 @@ class _LoginHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        Container(
-          height: 76,
-          width: 76,
-          decoration: BoxDecoration(
-            color: context.colors.primaryContainer,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-          ),
-          child: Icon(
-            Icons.how_to_reg_rounded,
-            size: 38,
-            color: context.colors.onPrimaryContainer,
-          ),
-        ),
+        Image.asset(AppInfo.logoAsset, height: 84, width: 84),
         AppSpacing.gapLg,
-        Text('Attendance', style: context.text.headlineMedium),
+        Text(AppInfo.name, style: context.text.headlineMedium),
         AppSpacing.gapXs,
         Text(
           'Daily staff attendance, in one place',

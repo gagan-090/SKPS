@@ -11,11 +11,13 @@ import 'app_spacing.dart';
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData get light => _build(Brightness.light);
+  static ThemeData light([AppBrand brand = AppBrand.classic]) =>
+      _build(Brightness.light, BrandPalette.of(brand));
 
-  static ThemeData get dark => _build(Brightness.dark);
+  static ThemeData dark([AppBrand brand = AppBrand.classic]) =>
+      _build(Brightness.dark, BrandPalette.of(brand));
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(Brightness brightness, BrandPalette brand) {
     final isDark = brightness == Brightness.dark;
 
     final background = isDark ? AppColors.backgroundDark : AppColors.background;
@@ -27,14 +29,12 @@ class AppTheme {
         ? AppColors.textSecondaryDark
         : AppColors.textSecondary;
     final divider = isDark ? AppColors.dividerDark : AppColors.divider;
-    final primary = isDark ? AppColors.primaryDark : AppColors.primary;
+    final primary = isDark ? brand.primaryDark : brand.primary;
     final primaryContainer = isDark
-        ? AppColors.primaryContainerDark
-        : AppColors.primaryContainer;
-    final onPrimary = isDark ? const Color(0xFF06231A) : Colors.white;
-    final onPrimaryContainer = isDark
-        ? AppColors.primaryDark
-        : AppColors.primary;
+        ? brand.primaryContainerDark
+        : brand.primaryContainer;
+    final onPrimary = isDark ? brand.onPrimaryDark : brand.onPrimary;
+    final onPrimaryContainer = isDark ? brand.primaryDark : brand.primary;
 
     final scheme = ColorScheme(
       brightness: brightness,
@@ -72,7 +72,7 @@ class AppTheme {
       outlineVariant: divider,
       inverseSurface: isDark ? AppColors.surface : AppColors.textPrimary,
       onInverseSurface: isDark ? AppColors.textPrimary : Colors.white,
-      inversePrimary: isDark ? AppColors.primary : AppColors.primaryDark,
+      inversePrimary: isDark ? brand.primary : brand.primaryDark,
       shadow: Colors.black,
       scrim: Colors.black,
     );
@@ -281,7 +281,7 @@ class AppTheme {
             ? const Color(0xFF2A2F38)
             : AppColors.textPrimary,
         contentTextStyle: shapedText.bodyMedium?.copyWith(color: Colors.white),
-        actionTextColor: AppColors.primaryDark,
+        actionTextColor: brand.primaryDark,
         elevation: 0,
         insetPadding: const EdgeInsets.all(AppSpacing.lg),
         shape: const RoundedRectangleBorder(

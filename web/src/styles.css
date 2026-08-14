@@ -54,6 +54,21 @@
   color-scheme: dark;
 }
 
+/* The SKPS skin — the blue of the logo, mirrored from `BrandPalette.skps` in
+   lib/core/theme/app_colors.dart. Selectors are deliberately more specific
+   than the `[data-theme]` blocks above so the brand wins in both modes. */
+:root[data-brand='skps'] {
+  --primary: #3074bd;
+  --primary-container: #e3eefa;
+  --on-primary: #ffffff;
+}
+
+:root[data-brand='skps'][data-theme='dark'] {
+  --primary: #8cbce8;
+  --primary-container: #14293f;
+  --on-primary: #06233d;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -135,15 +150,11 @@ button {
 }
 
 .topbar__mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 30px;
   height: 30px;
-  border-radius: 9px;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: 0.85rem;
-  font-weight: 700;
+  flex: none;
+  object-fit: contain;
 }
 
 .topbar__nav {
@@ -402,6 +413,55 @@ button {
 
 .seg__btn--on {
   color: #fff;
+}
+
+/* Colour-skin picker in Settings → Appearance. */
+.brand-picker {
+  display: inline-flex;
+  gap: var(--sp-2);
+}
+
+.brand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 650;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.brand-btn:hover {
+  border-color: var(--primary);
+}
+
+.brand-btn--on {
+  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.brand-btn img {
+  display: block;
+}
+
+/* The classic swatch keeps its own green whichever skin is active. */
+.brand-btn__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1b4d3e;
+}
+
+[data-theme='dark'] .brand-btn__swatch {
+  background: #6fbfa1;
 }
 
 .pill {

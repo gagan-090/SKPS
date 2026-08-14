@@ -10,6 +10,9 @@ class AppColors {
   static const Color primaryDark = Color(0xFF6FBFA1);
   static const Color primaryContainerDark = Color(0xFF14332A);
 
+  /// The blue lifted straight out of the SKPS logo.
+  static const Color skpsBlue = Color(0xFF3074BD);
+
   // ---- light surfaces -----------------------------------------------------
   static const Color background = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFFFFFFF);
@@ -54,4 +57,62 @@ class AppColors {
     }
     return avatarPalette[hash % avatarPalette.length];
   }
+}
+
+/// Selectable colour skins. [classic] is the original green house style;
+/// [skps] repaints the app in the colours of the SKPS logo.
+enum AppBrand {
+  classic('Classic'),
+  skps('SKPS');
+
+  const AppBrand(this.label);
+
+  final String label;
+
+  static AppBrand fromName(String? value) =>
+      value == skps.name ? skps : classic;
+}
+
+/// The handful of colours a brand skin actually changes. Everything else —
+/// surfaces, status colours, text — stays shared so the app keeps one shape.
+class BrandPalette {
+  const BrandPalette({
+    required this.primary,
+    required this.primaryContainer,
+    required this.onPrimary,
+    required this.primaryDark,
+    required this.primaryContainerDark,
+    required this.onPrimaryDark,
+  });
+
+  final Color primary;
+  final Color primaryContainer;
+  final Color onPrimary;
+
+  final Color primaryDark;
+  final Color primaryContainerDark;
+  final Color onPrimaryDark;
+
+  static const BrandPalette classic = BrandPalette(
+    primary: AppColors.primary,
+    primaryContainer: AppColors.primaryContainer,
+    onPrimary: Color(0xFFFFFFFF),
+    primaryDark: AppColors.primaryDark,
+    primaryContainerDark: AppColors.primaryContainerDark,
+    onPrimaryDark: Color(0xFF06231A),
+  );
+
+  static const BrandPalette skps = BrandPalette(
+    primary: AppColors.skpsBlue,
+    primaryContainer: Color(0xFFE3EEFA),
+    onPrimary: Color(0xFFFFFFFF),
+    primaryDark: Color(0xFF8CBCE8),
+    primaryContainerDark: Color(0xFF14293F),
+    onPrimaryDark: Color(0xFF06233D),
+  );
+
+  static BrandPalette of(AppBrand brand) => switch (brand) {
+    AppBrand.classic => classic,
+    AppBrand.skps => skps,
+  };
 }

@@ -2,13 +2,19 @@ import { useState } from 'react';
 
 import { Button, Field, Modal } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
-import { useSettings, type ThemeMode } from '../context/SettingsContext';
+import {
+  BRAND_LABEL,
+  useSettings,
+  type Brand,
+  type ThemeMode,
+} from '../context/SettingsContext';
 import { useToast } from '../context/ToastContext';
 import { authRepo } from '../data/auth';
 import { AppInfo } from '../lib/env';
 
 export default function Settings() {
-  const { businessName, setBusinessName, themeMode, setThemeMode } = useSettings();
+  const { businessName, setBusinessName, themeMode, setThemeMode, brand, setBrand } =
+    useSettings();
   const { email } = useAuth();
   const { notify, notifyError } = useToast();
 
@@ -88,6 +94,33 @@ export default function Settings() {
                     onClick={() => setThemeMode(mode)}
                   >
                     {mode[0].toUpperCase() + mode.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="list__row">
+              <div className="grow">
+                <div className="list__title">Colour</div>
+                <div className="list__meta">
+                  SKPS paints the panel in the colours of the SKPS logo
+                </div>
+              </div>
+              <div className="brand-picker">
+                {(['classic', 'skps'] as Brand[]).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={`brand-btn${brand === option ? ' brand-btn--on' : ''}`}
+                    aria-pressed={brand === option}
+                    onClick={() => setBrand(option)}
+                  >
+                    {option === 'skps' ? (
+                      <img src={AppInfo.logo} alt="" width={20} height={20} />
+                    ) : (
+                      <span className="brand-btn__swatch" />
+                    )}
+                    {BRAND_LABEL[option]}
                   </button>
                 ))}
               </div>

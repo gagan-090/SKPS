@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/config/app_info.dart';
 import '../../core/errors/app_exception.dart';
 import '../../core/router/app_router.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_card.dart';
@@ -151,6 +152,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       .read(prefsProvider.notifier)
                       .setThemeMode(selection.first),
                 ),
+                AppSpacing.gapLg,
+                Text('Colour', style: context.text.titleSmall),
+                AppSpacing.gapXs,
+                Text(
+                  'SKPS paints the app in the colours of the SKPS logo.',
+                  style: context.text.bodySmall,
+                ),
+                AppSpacing.gapMd,
+                Row(
+                  children: <Widget>[
+                    for (final AppBrand brand in AppBrand.values) ...<Widget>[
+                      Expanded(
+                        child: _BrandButton(
+                          brand: brand,
+                          selected: prefs.brand == brand,
+                          onTap: () =>
+                              ref.read(prefsProvider.notifier).setBrand(brand),
+                        ),
+                      ),
+                      if (brand != AppBrand.values.last) AppSpacing.wGapMd,
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -198,6 +222,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: context.text.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One colour-skin choice. Shows the swatch it applies, and the SKPS mark on
+/// the SKPS option so the owner can see it is the logo's own blue.
+class _BrandButton extends StatelessWidget {
+  const _BrandButton({
+    required this.brand,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppBrand brand;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = BrandPalette.of(brand);
+    final swatch = context.isDarkMode ? palette.primaryDark : palette.primary;
+
+    return Material(
+      color: selected
+          ? (context.isDarkMode
+                ? palette.primaryContainerDark
+                : palette.primaryContainer)
+          : Colors.transparent,
+      borderRadius: AppRadius.buttonRadius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.buttonRadius,
+        child: Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.buttonRadius,
+            border: Border.all(
+              color: selected ? swatch : context.hairline,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              if (brand == AppBrand.skps)
+                Image.asset(AppInfo.logoAsset, height: 24, width: 24)
+              else
+                Container(
+                  height: 20,
+                  width: 20,
+                  decoration: BoxDecoration(
+                    color: swatch,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              AppSpacing.wGapSm,
+              Flexible(
+                child: Text(
+                  brand.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.labelLarge?.copyWith(
+                    color: selected ? swatch : context.colors.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (selected) ...<Widget>[
+                AppSpacing.wGapXs,
+                Icon(Icons.check_rounded, size: 18, color: swatch),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

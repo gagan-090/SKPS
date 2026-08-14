@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/config/app_info.dart';
 import '../../core/utils/date_utils.dart';
 import '../../data/models/attendance_status.dart';
 import 'report_controller.dart';
@@ -15,8 +17,22 @@ class PdfBuilder {
   static const PdfColor _ink = PdfColor.fromInt(0xFF111827);
   static const PdfColor _muted = PdfColor.fromInt(0xFF6B7280);
   static const PdfColor _line = PdfColor.fromInt(0xFFD1D5DB);
-  static const PdfColor _headerFill = PdfColor.fromInt(0xFFE3EFE9);
-  static const PdfColor _brand = PdfColor.fromInt(0xFF1B4D3E);
+  static const PdfColor _headerFill = PdfColor.fromInt(0xFFE3EEFA);
+  static const PdfColor _brand = PdfColor.fromInt(0xFF3074BD);
+
+  /// The SKPS mark, decoded once per process and reused by every export.
+  static pw.MemoryImage? _logo;
+
+  static Future<pw.MemoryImage?> _loadLogo() async {
+    if (_logo != null) return _logo;
+    try {
+      final data = await rootBundle.load(AppInfo.logoPrintAsset);
+      return _logo = pw.MemoryImage(data.buffer.asUint8List());
+    } catch (_) {
+      // A missing asset must never block an export.
+      return null;
+    }
+  }
 
   static PdfColor _statusColor(AttendanceStatus status) => switch (status) {
     AttendanceStatus.present => const PdfColor.fromInt(0xFF16A34A),
@@ -36,14 +52,18 @@ class PdfBuilder {
 
     final generatedOn = AppDate.displayLong(DateTime.now());
     final generatedAt = AppDate.time(DateTime.now());
+    final logo = await _loadLogo();
 
     document.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 20),
+        pageTheme: pw.PageTheme(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 20),
+          buildBackground: (pw.Context context) => _watermark(logo),
+        ),
         header: (pw.Context context) => context.pageNumber == 1
-            ? _titleBlock(data, businessName)
-            : _runningHeader(data, businessName),
+            ? _titleBlock(data, businessName, logo)
+            : _runningHeader(data, businessName, logo),
         footer: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(top: 8),
@@ -72,7 +92,25 @@ class PdfBuilder {
     return document.save();
   }
 
-  static pw.Widget _titleBlock(ReportData data, String businessName) {
+  /// A faint SKPS mark centred behind the table on every page.
+  static pw.Widget _watermark(pw.MemoryImage? logo) {
+    if (logo == null) return pw.SizedBox();
+    return pw.FullPage(
+      ignoreMargins: true,
+      child: pw.Center(
+        child: pw.Opacity(
+          opacity: 0.06,
+          child: pw.Image(logo, width: 320, height: 320),
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _titleBlock(
+    ReportData data,
+    String businessName,
+    pw.MemoryImage? logo,
+  ) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 12),
       padding: const pw.EdgeInsets.only(bottom: 8),
@@ -83,21 +121,30 @@ class PdfBuilder {
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: <pw.Widget>[
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: <pw.Widget>[
-              pw.Text(
-                businessName,
-                style: pw.TextStyle(
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
-                  color: _brand,
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'Attendance Report',
-                style: const pw.TextStyle(fontSize: 10, color: _muted),
+              if (logo != null) ...<pw.Widget>[
+                pw.Image(logo, width: 34, height: 34),
+                pw.SizedBox(width: 8),
+              ],
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: <pw.Widget>[
+                  pw.Text(
+                    businessName,
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _brand,
+                    ),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Attendance Report',
+                    style: const pw.TextStyle(fontSize: 10, color: _muted),
+                  ),
+                ],
               ),
             ],
           ),
@@ -126,12 +173,25 @@ class PdfBuilder {
     );
   }
 
-  static pw.Widget _runningHeader(ReportData data, String businessName) {
+  static pw.Widget _runningHeader(
+    ReportData data,
+    String businessName,
+    pw.MemoryImage? logo,
+  ) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 8),
-      child: pw.Text(
-        '$businessName · Attendance · ${data.monthLabel}',
-        style: const pw.TextStyle(fontSize: 8, color: _muted),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: <pw.Widget>[
+          if (logo != null) ...<pw.Widget>[
+            pw.Image(logo, width: 14, height: 14),
+            pw.SizedBox(width: 5),
+          ],
+          pw.Text(
+            '$businessName · Attendance · ${data.monthLabel}',
+            style: const pw.TextStyle(fontSize: 8, color: _muted),
+          ),
+        ],
       ),
     );
   }

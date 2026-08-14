@@ -67,21 +67,26 @@ flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#1B4D3E"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"
   remove_alpha_ios: true
 
 # Native splash screen. Regenerate with:
 #   dart run flutter_native_splash:create
 flutter_native_splash:
-  color: "#1B4D3E"
+  # White, not the brand blue: the mark is a blue disc, so it would vanish
+  # into a blue splash.
+  color: "#FFFFFF"
   color_dark: "#0F1115"
   image: assets/icon/splash.png
   image_dark: assets/icon/splash.png
   android: true
   ios: true
+  # `web/` in this repo is the React admin panel, not a Flutter web target —
+  # generating a splash there would overwrite its index.html.
+  web: false
   android_12:
-    color: "#1B4D3E"
+    color: "#FFFFFF"
     color_dark: "#0F1115"
     image: assets/icon/splash.png
     image_dark: assets/icon/splash.png
@@ -97,10 +102,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/brand/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

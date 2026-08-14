@@ -22,8 +22,8 @@ There are **no employee logins**. Only the owner uses the app.
 | **Employees** | Searchable, filterable roster. Long-press a row for Call / WhatsApp / Edit / Deactivate. Add and edit with validation. |
 | **Employee detail** | Profile, tap-to-call, WhatsApp link, plus a month calendar where every day is tinted by status. Tap a day to change it. |
 | **Mark Attendance** | One row per active employee, a P / A / H / L selector, "Mark All Present", per-row notes, and a single batched save. |
-| **Reports** | Month + scope picker, a scrollable matrix with a frozen name column, and CSV / PDF / Print exports through the system share sheet. |
-| **Settings** | Business name (printed on the PDF), theme mode, app version, log out. |
+| **Reports** | Month + scope picker, a scrollable matrix with a frozen name column, and CSV / PDF / Print exports through the system share sheet. The PDF carries the SKPS mark in its header and as a faint watermark on every page. |
+| **Settings** | Business name (printed on the PDF), theme mode, colour skin (Classic or SKPS), app version, log out. |
 
 ---
 
@@ -121,7 +121,7 @@ lib/
   core/
     config/                     dart-define reader, app metadata
     errors/app_exception.dart   the only error type that leaves a repository
-    theme/                      colours, spacing, light + dark ThemeData
+    theme/                      colours, brand skins, spacing, light + dark ThemeData
     router/                     go_router with the auth redirect guard
     utils/                      dates, validators, tel/WhatsApp launcher
     widgets/                    empty state, error view, skeletons, buttons…
@@ -131,6 +131,17 @@ lib/
     repositories/               the only place Supabase is touched
   features/
     auth/ dashboard/ employees/ attendance/ reports/ settings/
+assets/
+  brand/                          the SKPS mark (UI copy + smaller print copy)
+  icon/                           launcher icon + splash sources
+```
+
+Regenerate the launcher icon and splash after changing anything in
+`assets/icon/`:
+
+```bash
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
 ```
 
 Rules the code sticks to:

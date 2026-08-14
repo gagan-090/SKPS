@@ -70,8 +70,8 @@ class _StartupFailureApp extends StatelessWidget {
     return MaterialApp(
       title: 'Attendance',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       home: Scaffold(
         body: SafeArea(
           child: Center(

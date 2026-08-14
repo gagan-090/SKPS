@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/theme/app_colors.dart';
+
 /// Injected in `main()` once the instance has been loaded, so the rest of the
 /// app can read preferences synchronously.
 final Provider<SharedPreferences> sharedPreferencesProvider =
@@ -15,12 +17,16 @@ final Provider<SharedPreferences> sharedPreferencesProvider =
 class AppPrefs {
   const AppPrefs({
     required this.themeMode,
+    required this.brand,
     required this.businessName,
     required this.lastYear,
     required this.lastMonth,
   });
 
   final ThemeMode themeMode;
+
+  /// Which colour skin the app paints itself in.
+  final AppBrand brand;
 
   /// Printed as the title of exported PDFs.
   final String businessName;
@@ -31,12 +37,14 @@ class AppPrefs {
 
   AppPrefs copyWith({
     ThemeMode? themeMode,
+    AppBrand? brand,
     String? businessName,
     int? lastYear,
     int? lastMonth,
   }) {
     return AppPrefs(
       themeMode: themeMode ?? this.themeMode,
+      brand: brand ?? this.brand,
       businessName: businessName ?? this.businessName,
       lastYear: lastYear ?? this.lastYear,
       lastMonth: lastMonth ?? this.lastMonth,
@@ -46,11 +54,12 @@ class AppPrefs {
 
 class PrefsController extends Notifier<AppPrefs> {
   static const String _kThemeMode = 'theme_mode';
+  static const String _kBrand = 'brand';
   static const String _kBusinessName = 'business_name';
   static const String _kLastYear = 'last_year';
   static const String _kLastMonth = 'last_month';
 
-  static const String defaultBusinessName = 'My Business';
+  static const String defaultBusinessName = 'SKPS';
 
   SharedPreferences get _prefs => ref.read(sharedPreferencesProvider);
 
@@ -60,6 +69,7 @@ class PrefsController extends Notifier<AppPrefs> {
     final now = DateTime.now();
     return AppPrefs(
       themeMode: _themeFromString(prefs.getString(_kThemeMode)),
+      brand: AppBrand.fromName(prefs.getString(_kBrand)),
       businessName: prefs.getString(_kBusinessName)?.trim().isNotEmpty ?? false
           ? prefs.getString(_kBusinessName)!.trim()
           : defaultBusinessName,
@@ -71,6 +81,12 @@ class PrefsController extends Notifier<AppPrefs> {
   Future<void> setThemeMode(ThemeMode mode) async {
     state = state.copyWith(themeMode: mode);
     await _prefs.setString(_kThemeMode, mode.name);
+  }
+
+  Future<void> setBrand(AppBrand brand) async {
+    if (state.brand == brand) return;
+    state = state.copyWith(brand: brand);
+    await _prefs.setString(_kBrand, brand.name);
   }
 
   Future<void> setBusinessName(String name) async {

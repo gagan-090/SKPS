@@ -15,14 +15,25 @@ import {
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
+/** Colour skins, matching `AppBrand` in lib/core/theme/app_colors.dart. */
+export type Brand = 'classic' | 'skps';
+
+export const BRAND_LABEL: Record<Brand, string> = {
+  classic: 'Classic',
+  skps: 'SKPS',
+};
+
 const K_THEME = 'theme_mode';
+const K_BRAND = 'brand';
 const K_BUSINESS = 'business_name';
-const DEFAULT_BUSINESS = 'My Business';
+const DEFAULT_BUSINESS = 'SKPS';
 
 interface SettingsValue {
   themeMode: ThemeMode;
+  brand: Brand;
   businessName: string;
   setThemeMode: (mode: ThemeMode) => void;
+  setBrand: (brand: Brand) => void;
   setBusinessName: (name: string) => void;
   /** The theme actually painted, after resolving `system`. */
   resolvedTheme: 'light' | 'dark';
@@ -41,6 +52,9 @@ function read(key: string, fallback: string): string {
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [themeMode, setThemeState] = useState<ThemeMode>(
     () => read(K_THEME, 'system') as ThemeMode,
+  );
+  const [brand, setBrandState] = useState<Brand>(() =>
+    read(K_BRAND, 'classic') === 'skps' ? 'skps' : 'classic',
   );
   const [businessName, setBusinessState] = useState(() =>
     read(K_BUSINESS, DEFAULT_BUSINESS),
@@ -63,10 +77,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', resolvedTheme);
   }, [resolvedTheme]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-brand', brand);
+  }, [brand]);
+
   const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeState(mode);
     try {
       localStorage.setItem(K_THEME, mode);
+    } catch {
+      /* private browsing — the choice just won't persist */
+    }
+  }, []);
+
+  const setBrand = useCallback((next: Brand) => {
+    setBrandState(next);
+    try {
+      localStorage.setItem(K_BRAND, next);
     } catch {
       /* private browsing — the choice just won't persist */
     }
@@ -83,8 +110,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<SettingsValue>(
-    () => ({ themeMode, businessName, setThemeMode, setBusinessName, resolvedTheme }),
-    [themeMode, businessName, setThemeMode, setBusinessName, resolvedTheme],
+    () => ({
+      themeMode,
+      brand,
+      businessName,
+      setThemeMode,
+      setBrand,
+      setBusinessName,
+      resolvedTheme,
+    }),
+    [
+      themeMode,
+      brand,
+      businessName,
+      setThemeMode,
+      setBrand,
+      setBusinessName,
+      resolvedTheme,
+    ],
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useSettings } from '../context/SettingsContext';
+import { AppInfo } from '../lib/env';
 
 const LINKS = [
   { to: '/', label: 'Home', end: true },
@@ -17,7 +18,7 @@ export default function Layout() {
     <div className="app-shell">
       <header className="topbar no-print">
         <div className="topbar__brand">
-          <div className="topbar__mark">A</div>
+          <img className="topbar__mark" src={AppInfo.logo} alt="" width={28} height={28} />
           <span className="truncate">{businessName}</span>
         </div>
 

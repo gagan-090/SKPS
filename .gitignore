@@ -51,6 +51,9 @@ app.*.map.json
 .env.*
 !.env.example
 
+# Kotlin build sessions, written by the Gradle build
+/android/.kotlin/
+
 # Android signing
 /android/key.properties
 *.jks

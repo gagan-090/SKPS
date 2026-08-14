@@ -1,9 +1,23 @@
-import { jsPDF } from 'jspdf';
+import { GState, jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import type { ReportData, ReportRow } from '../features/report';
+import { SKPS_MARK_PNG } from './brandMark';
 import { AppDate } from './date';
 import { STATUS, hasMobile, displayMobile, totalMarked } from '../types';
+
+const MARK = `data:image/png;base64,${SKPS_MARK_PNG}`;
+
+/** A faint SKPS mark centred behind the table, on every page. */
+function drawWatermark(doc: jsPDF): void {
+  const w = doc.internal.pageSize.getWidth();
+  const h = doc.internal.pageSize.getHeight();
+  const size = 320;
+  doc.saveGraphicsState();
+  doc.setGState(new GState({ opacity: 0.06 }));
+  doc.addImage(MARK, 'PNG', (w - size) / 2, (h - size) / 2, size, size, 'skps-mark');
+  doc.restoreGraphicsState();
+}
 
 /**
  * The monthly attendance PDF — landscape A4, the same shape as the printed
@@ -13,14 +27,17 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
+  doc.addImage(MARK, 'PNG', 40, 26, 34, 34, 'skps-mark');
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text(businessName, 40, 42);
+  doc.setTextColor(48, 116, 189);
+  doc.text(businessName, 84, 42);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(110);
-  doc.text(`Attendance — ${data.label}`, 40, 60);
+  doc.text(`Attendance — ${data.label}`, 84, 60);
   doc.text(
     `Generated ${AppDate.display(new Date())} at ${AppDate.time(new Date())}`,
     pageWidth - 40,
@@ -68,7 +85,7 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
       overflow: 'linebreak',
     },
     headStyles: {
-      fillColor: [27, 77, 62],
+      fillColor: [48, 116, 189],
       textColor: 255,
       fontStyle: 'bold',
       fontSize: 6.5,
@@ -86,6 +103,7 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
         hook.cell.styles.fontStyle = 'bold';
       }
     },
+    willDrawPage: () => drawWatermark(doc),
     didDrawPage: () => {
       const pageCount = doc.getNumberOfPages();
       const page = doc.getCurrentPageInfo().pageNumber;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/config/app_info.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/settings/settings_controller.dart';
@@ -14,12 +15,15 @@ class SkpsApp extends ConsumerWidget {
     final themeMode = ref.watch(
       prefsProvider.select((AppPrefs prefs) => prefs.themeMode),
     );
+    final brand = ref.watch(
+      prefsProvider.select((AppPrefs prefs) => prefs.brand),
+    );
 
     return MaterialApp.router(
-      title: 'Attendance',
+      title: AppInfo.name,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(brand),
+      darkTheme: AppTheme.dark(brand),
       themeMode: themeMode,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {

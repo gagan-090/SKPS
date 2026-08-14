@@ -35,9 +35,12 @@ export const Env = {
 } as const;
 
 export const AppInfo = {
-  name: 'Attendance',
+  name: 'SKPS Attendance',
+  shortName: 'SKPS',
   version: '1.0.0',
   buildNumber: '1',
   versionLabel: '1.0.0 (1)',
   tagline: 'Daily staff attendance, kept simple.',
+  /** The SKPS mark, served from `web/public`. */
+  logo: '/skps-logo.png',
 } as const;

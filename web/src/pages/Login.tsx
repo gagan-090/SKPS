@@ -63,12 +63,14 @@ export default function Login() {
     <div className="center-screen">
       <div className="auth-card stack">
         <div style={{ textAlign: 'center' }}>
-          <div
+          <img
             className="topbar__mark"
-            style={{ width: 52, height: 52, margin: '0 auto 14px', fontSize: '1.3rem', borderRadius: 15 }}
-          >
-            A
-          </div>
+            src={AppInfo.logo}
+            alt=""
+            width={64}
+            height={64}
+            style={{ width: 64, height: 64, margin: '0 auto 14px' }}
+          />
           <h1>{AppInfo.name}</h1>
           <p className="muted small" style={{ margin: '4px 0 0' }}>
             {AppInfo.tagline}
