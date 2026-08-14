@@ -26,7 +26,6 @@ class AppCard extends StatelessWidget {
 
     return Material(
       color: color ?? theme.colorScheme.surface,
-      borderRadius: AppRadius.cardRadius,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadius.cardRadius,
         side: BorderSide(color: borderColor ?? theme.dividerColor),
