@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attendance (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      // Reads SUPABASE_URL and SUPABASE_ANON_KEY from the git-ignored .env,
+      // so no key is ever committed. Copy .env.example to .env first.
+      "toolArgs": ["--dart-define-from-file=.env"]
+    },
+    {
+      "name": "Attendance (profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile",
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define-from-file=.env"]
+    },
+    {
+      "name": "Attendance (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define-from-file=.env"]
+    }
+  ]
+}
