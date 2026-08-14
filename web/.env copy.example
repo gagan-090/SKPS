@@ -1,0 +1,16 @@
+# Copy this file to `.env` and fill in your own values.
+# `.env` is git-ignored and must never be committed.
+#
+# Both values come from the Supabase dashboard:
+#   Project Settings -> API
+#
+# Run the app with:
+#   flutter run --dart-define-from-file=.env
+
+# Project URL, e.g. https://abcdefghijklmnop.supabase.co
+SUPABASE_URL=
+
+# The "anon public" key (a long JWT starting with eyJ...).
+# This is the ONLY Supabase key that belongs in a mobile app.
+# Never put the service_role key here — it bypasses Row Level Security.
+SUPABASE_ANON_KEY=
