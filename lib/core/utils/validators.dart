@@ -39,4 +39,24 @@ class Validators {
 
   static bool isValidMobile(String? value) =>
       value != null && _indianMobile.hasMatch(value.trim());
+
+  /// Salary is optional, but when present it must be a non-negative number.
+  static String? salaryOptional(String? value) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return null;
+    final parsed = double.tryParse(v);
+    if (parsed == null) return 'Enter a valid amount';
+    if (parsed < 0) return 'Amount cannot be negative';
+    if (parsed > 100000000) return 'Amount is too large';
+    return null;
+  }
+
+  /// Parses a rupee amount from a text field, or null when blank/invalid.
+  static double? parseAmount(String? value) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return null;
+    final parsed = double.tryParse(v);
+    if (parsed == null || parsed < 0) return null;
+    return parsed;
+  }
 }

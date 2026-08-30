@@ -38,6 +38,8 @@ class OfflineStore {
             'address': e.address,
             'is_active': e.isActive,
             'joined_on': AppDate.ymd(e.joinedOn),
+            'salary_type': e.salaryType.dbValue,
+            'salary_amount': e.salaryAmount,
           },
         )
         .toList();
@@ -129,6 +131,7 @@ class OfflineStore {
         'day': record.dayKey,
         'status': record.status.dbValue,
         'note': record.note,
+        'amount': record.amount,
       };
 
   List<AttendanceRecord>? _decodeRecords(String raw) {
@@ -142,6 +145,7 @@ class OfflineStore {
               day: AppDate.parseYmd(map['day'] as String),
               status: AttendanceStatus.fromDb(map['status'] as String),
               note: map['note'] as String?,
+              amount: (map['amount'] as num?)?.toDouble(),
             ),
           )
           .toList();

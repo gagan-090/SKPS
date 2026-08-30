@@ -26,6 +26,21 @@ class ReportRow {
   /// Days before the employee joined print as "—", not as an absence.
   bool isBeforeJoining(int year, int month, int day) =>
       !employee.wasEmployedOn(DateTime(year, month, day));
+
+  /// Total pay earned this month: each day's manual override, or the amount
+  /// derived from the employee's daily rate and that day's status.
+  double get monthSalary {
+    var sum = 0.0;
+    for (final AttendanceRecord record in byDay.values) {
+      sum += record.amount ?? employee.defaultAmountFor(record.status);
+    }
+    return sum;
+  }
+
+  /// Whether this row has any pay information worth printing.
+  bool get hasSalary =>
+      employee.hasSalary ||
+      byDay.values.any((AttendanceRecord r) => r.amount != null);
 }
 
 class ReportData {
@@ -54,6 +69,25 @@ class ReportData {
       days.addAll(row.byDay.keys);
     }
     return days.length;
+  }
+
+  /// Grand total pay across every included employee.
+  double get totalSalary =>
+      rows.fold(0, (double sum, ReportRow row) => sum + row.monthSalary);
+
+  /// True when any included employee has pay information to show.
+  bool get hasSalary => rows.any((ReportRow row) => row.hasSalary);
+
+  /// A copy limited to the given employee ids, used to export a chosen subset.
+  ReportData withEmployees(Set<String> employeeIds) {
+    return ReportData(
+      year: year,
+      month: month,
+      daysInMonth: daysInMonth,
+      rows: rows
+          .where((ReportRow row) => employeeIds.contains(row.employee.id))
+          .toList(),
+    );
   }
 }
 

@@ -111,11 +111,25 @@ class SaveOutcome {
 
 /// One editable row on the Mark Attendance screen.
 class MarkEntry {
-  const MarkEntry({this.status, this.note, this.noteVisible = false});
+  const MarkEntry({
+    this.status,
+    this.note,
+    this.amount,
+    this.amountManual = false,
+    this.noteVisible = false,
+  });
 
   /// Null means "not marked".
   final AttendanceStatus? status;
   final String? note;
+
+  /// The pay for the day. Auto-filled from the employee's daily rate when a
+  /// status is picked; null means "no pay recorded".
+  final double? amount;
+
+  /// True once the owner has typed the amount by hand, so it is no longer
+  /// re-derived when the status changes.
+  final bool amountManual;
 
   /// Whether the note field is expanded for this row.
   final bool noteVisible;
@@ -124,11 +138,16 @@ class MarkEntry {
     AttendanceStatus? status,
     String? note,
     bool clearNote = false,
+    double? amount,
+    bool clearAmount = false,
+    bool? amountManual,
     bool? noteVisible,
   }) {
     return MarkEntry(
       status: status ?? this.status,
       note: clearNote ? null : (note ?? this.note),
+      amount: clearAmount ? null : (amount ?? this.amount),
+      amountManual: amountManual ?? this.amountManual,
       noteVisible: noteVisible ?? this.noteVisible,
     );
   }
@@ -197,19 +216,57 @@ class MarkAttendanceController extends AsyncNotifier<MarkAttendanceState> {
       dayAttendanceProvider(AppDate.ymd(day)).future,
     );
 
+    final rosterById = <String, Employee>{
+      for (final Employee employee in roster) employee.id: employee,
+    };
     final entries = <String, MarkEntry>{
       for (final Employee employee in roster) employee.id: const MarkEntry(),
     };
     for (final AttendanceRecord record in existing) {
       if (!entries.containsKey(record.employeeId)) continue;
+      final employee = rosterById[record.employeeId]!;
+      // A saved amount is treated as hand-set; otherwise pre-fill the rate.
+      final manual = record.amount != null;
       entries[record.employeeId] = MarkEntry(
         status: record.status,
         note: record.note,
+        amount: record.amount ?? defaultPay(employee, record.status),
+        amountManual: manual,
         noteVisible: record.hasNote,
       );
     }
 
     return MarkAttendanceState(day: day, roster: roster, entries: entries);
+  }
+
+  /// The pay to pre-fill for [status] at [employee]'s daily rate, or null when
+  /// there is nothing to earn that day (absent/leave) or no salary on file.
+  static double? defaultPay(Employee employee, AttendanceStatus status) {
+    if (!employee.hasSalary) return null;
+    final amount = employee.defaultAmountFor(status);
+    return amount > 0 ? amount : null;
+  }
+
+  Employee? _employeeFor(MarkAttendanceState state, String id) {
+    for (final Employee employee in state.roster) {
+      if (employee.id == id) return employee;
+    }
+    return null;
+  }
+
+  /// Applies [status] to [entry], re-filling the auto pay unless it was set by
+  /// hand.
+  MarkEntry _withStatus(
+    MarkEntry entry,
+    AttendanceStatus status,
+    Employee? employee,
+  ) {
+    final next = entry.copyWith(status: status);
+    if (entry.amountManual) return next;
+    final auto = employee == null ? null : defaultPay(employee, status);
+    return auto == null
+        ? next.copyWith(clearAmount: true)
+        : next.copyWith(amount: auto);
   }
 
   MarkAttendanceState? get _current => state.value;
@@ -220,9 +277,28 @@ class MarkAttendanceController extends AsyncNotifier<MarkAttendanceState> {
     final entry = current.entries[employeeId] ?? const MarkEntry();
     // Tapping the selected option again clears it back to "not marked".
     final next = entry.status == status
-        ? MarkEntry(note: entry.note, noteVisible: entry.noteVisible)
-        : entry.copyWith(status: status);
+        ? MarkEntry(
+            note: entry.note,
+            amount: entry.amount,
+            amountManual: entry.amountManual,
+            noteVisible: entry.noteVisible,
+          )
+        : _withStatus(entry, status, _employeeFor(current, employeeId));
     _write(current, employeeId, next);
+  }
+
+  /// Records a hand-typed pay amount; from now on it is not re-derived.
+  void setAmount(String employeeId, double? amount) {
+    final current = _current;
+    if (current == null || current.saving) return;
+    final entry = current.entries[employeeId] ?? const MarkEntry();
+    _write(
+      current,
+      employeeId,
+      amount == null
+          ? entry.copyWith(clearAmount: true, amountManual: true)
+          : entry.copyWith(amount: amount, amountManual: true),
+    );
   }
 
   void toggleNote(String employeeId) {
@@ -252,11 +328,18 @@ class MarkAttendanceController extends AsyncNotifier<MarkAttendanceState> {
   void markAllPresent() {
     final current = _current;
     if (current == null || current.saving) return;
+    final rosterById = <String, Employee>{
+      for (final Employee employee in current.roster) employee.id: employee,
+    };
     state = AsyncValue<MarkAttendanceState>.data(
       current.copyWith(
         entries: <String, MarkEntry>{
           for (final MapEntry<String, MarkEntry> e in current.entries.entries)
-            e.key: e.value.copyWith(status: AttendanceStatus.present),
+            e.key: _withStatus(
+              e.value,
+              AttendanceStatus.present,
+              rosterById[e.key],
+            ),
         },
       ),
     );
@@ -266,12 +349,19 @@ class MarkAttendanceController extends AsyncNotifier<MarkAttendanceState> {
   void markRemainingAbsent() {
     final current = _current;
     if (current == null || current.saving) return;
+    final rosterById = <String, Employee>{
+      for (final Employee employee in current.roster) employee.id: employee,
+    };
     state = AsyncValue<MarkAttendanceState>.data(
       current.copyWith(
         entries: <String, MarkEntry>{
           for (final MapEntry<String, MarkEntry> e in current.entries.entries)
             e.key: e.value.status == null
-                ? e.value.copyWith(status: AttendanceStatus.absent)
+                ? _withStatus(
+                    e.value,
+                    AttendanceStatus.absent,
+                    rosterById[e.key],
+                  )
                 : e.value,
         },
       ),
@@ -310,6 +400,7 @@ class MarkAttendanceController extends AsyncNotifier<MarkAttendanceState> {
             day: current.day,
             status: current.entries[employee.id]!.status!,
             note: current.entries[employee.id]!.note,
+            amount: current.entries[employee.id]!.amount,
           ),
     ];
 
@@ -370,6 +461,7 @@ Future<String?> updateSingleDay(
   required DateTime day,
   required AttendanceStatus? status,
   String? note,
+  double? amount,
 }) async {
   try {
     final repository = ref.read(attendanceRepositoryProvider);
@@ -382,6 +474,7 @@ Future<String?> updateSingleDay(
           day: day,
           status: status,
           note: note,
+          amount: amount,
         ),
       );
     }

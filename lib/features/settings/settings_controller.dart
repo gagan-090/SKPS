@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/theme/app_colors.dart';
 
+import '../../data/models/employee.dart';
+
 /// Injected in `main()` once the instance has been loaded, so the rest of the
 /// app can read preferences synchronously.
 final Provider<SharedPreferences> sharedPreferencesProvider =
@@ -21,6 +23,7 @@ class AppPrefs {
     required this.businessName,
     required this.lastYear,
     required this.lastMonth,
+    required this.salaryDays,
   });
 
   final ThemeMode themeMode;
@@ -35,12 +38,16 @@ class AppPrefs {
   final int lastYear;
   final int lastMonth;
 
+  /// Days a monthly wage is spread over to get a daily rate (e.g. 26 or 30).
+  final int salaryDays;
+
   AppPrefs copyWith({
     ThemeMode? themeMode,
     AppBrand? brand,
     String? businessName,
     int? lastYear,
     int? lastMonth,
+    int? salaryDays,
   }) {
     return AppPrefs(
       themeMode: themeMode ?? this.themeMode,
@@ -48,6 +55,7 @@ class AppPrefs {
       businessName: businessName ?? this.businessName,
       lastYear: lastYear ?? this.lastYear,
       lastMonth: lastMonth ?? this.lastMonth,
+      salaryDays: salaryDays ?? this.salaryDays,
     );
   }
 }
@@ -58,6 +66,7 @@ class PrefsController extends Notifier<AppPrefs> {
   static const String _kBusinessName = 'business_name';
   static const String _kLastYear = 'last_year';
   static const String _kLastMonth = 'last_month';
+  static const String _kSalaryDays = 'salary_days';
 
   static const String defaultBusinessName = 'SKPS';
 
@@ -67,6 +76,10 @@ class PrefsController extends Notifier<AppPrefs> {
   AppPrefs build() {
     final prefs = ref.watch(sharedPreferencesProvider);
     final now = DateTime.now();
+    final salaryDays =
+        prefs.getInt(_kSalaryDays) ?? Employee.defaultDaysInSalaryMonth;
+    // Keep the model's divisor in step with the stored setting from first read.
+    Employee.daysInSalaryMonth = salaryDays;
     return AppPrefs(
       themeMode: _themeFromString(prefs.getString(_kThemeMode)),
       brand: AppBrand.fromName(prefs.getString(_kBrand)),
@@ -75,6 +88,7 @@ class PrefsController extends Notifier<AppPrefs> {
           : defaultBusinessName,
       lastYear: prefs.getInt(_kLastYear) ?? now.year,
       lastMonth: prefs.getInt(_kLastMonth) ?? now.month,
+      salaryDays: salaryDays,
     );
   }
 

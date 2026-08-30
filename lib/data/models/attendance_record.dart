@@ -13,6 +13,7 @@ class AttendanceRecord {
     this.id,
     this.ownerId,
     this.note,
+    this.amount,
     this.markedAt,
   });
 
@@ -24,11 +25,17 @@ class AttendanceRecord {
   final DateTime day;
   final AttendanceStatus status;
   final String? note;
+
+  /// Manual pay override for this day, in rupees. Null means "derive it from
+  /// the employee's daily rate and this day's status".
+  final double? amount;
   final DateTime? markedAt;
 
   String get dayKey => AppDate.ymd(day);
 
   bool get hasNote => (note ?? '').trim().isNotEmpty;
+
+  bool get hasAmount => amount != null;
 
   factory AttendanceRecord.fromMap(Map<String, dynamic> map) {
     return AttendanceRecord(
@@ -38,10 +45,18 @@ class AttendanceRecord {
       day: AppDate.parseYmd(map['day'] as String? ?? ''),
       status: AttendanceStatus.fromDb(map['status'] as String? ?? 'absent'),
       note: (map['note'] as String?)?.trim(),
+      amount: _toDouble(map['amount']),
       markedAt: map['marked_at'] == null
           ? null
           : DateTime.tryParse(map['marked_at'] as String)?.toLocal(),
     );
+  }
+
+  /// Postgres `numeric` can arrive as a num or a string; be tolerant of both.
+  static double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   /// Upsert payload. `owner_id` is added by the repository from the session.
@@ -50,6 +65,7 @@ class AttendanceRecord {
     'day': AppDate.ymd(day),
     'status': status.dbValue,
     'note': (note ?? '').trim().isEmpty ? null : note!.trim(),
+    'amount': amount,
   };
 
   AttendanceRecord copyWith({
@@ -60,6 +76,8 @@ class AttendanceRecord {
     AttendanceStatus? status,
     String? note,
     bool clearNote = false,
+    double? amount,
+    bool clearAmount = false,
     DateTime? markedAt,
   }) {
     return AttendanceRecord(
@@ -69,6 +87,7 @@ class AttendanceRecord {
       day: day ?? this.day,
       status: status ?? this.status,
       note: clearNote ? null : (note ?? this.note),
+      amount: clearAmount ? null : (amount ?? this.amount),
       markedAt: markedAt ?? this.markedAt,
     );
   }

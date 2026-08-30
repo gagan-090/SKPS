@@ -6,6 +6,7 @@ import '../../core/errors/app_exception.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/money.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_dialogs.dart';
 import '../../core/widgets/empty_state.dart';
@@ -15,8 +16,6 @@ import '../../core/widgets/month_selector.dart';
 import '../../core/widgets/primary_button.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../data/models/attendance_status.dart';
-import '../../data/models/employee.dart';
-import '../employees/employees_controller.dart';
 import '../settings/settings_controller.dart';
 import 'export_service.dart';
 import 'report_controller.dart';
@@ -29,14 +28,16 @@ class ReportScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportScreenState extends ConsumerState<ReportScreen> {
-  static const double _rowHeight = 40;
-  static const double _nameColumnWidth = 132;
+  static const double _rowHeight = 44;
+  static const double _nameColumnWidth = 180;
   static const double _dayColumnWidth = 34;
   static const double _totalColumnWidth = 40;
 
   int? _year;
   int? _month;
-  String? _employeeId;
+
+  /// Employee ids ticked for export. null means "everyone in the report".
+  Set<String>? _selectedIds;
   bool _exporting = false;
 
   int get year => _year ?? ref.read(prefsProvider).lastYear;
@@ -46,18 +47,41 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     setState(() {
       _year = year;
       _month = month;
+      // A new month has a new roster; start with everyone ticked again.
+      _selectedIds = null;
     });
     ref.read(prefsProvider.notifier).setLastMonth(year, month);
   }
 
+  /// The ids actually ticked, resolving the "everyone" default against [data].
+  Set<String> _selection(ReportData data) =>
+      _selectedIds ??
+      <String>{for (final ReportRow row in data.rows) row.employee.id};
+
+  void _toggle(ReportData data, String id) {
+    final next = <String>{..._selection(data)};
+    if (!next.remove(id)) next.add(id);
+    setState(() => _selectedIds = next);
+  }
+
+  void _toggleAll(ReportData data, bool selectAll) {
+    setState(() => _selectedIds = selectAll ? null : <String>{});
+  }
+
   Future<void> _export(
     ReportData data,
-    Future<void> Function(ExportService service) run,
+    Future<void> Function(ExportService service, ReportData subset) run,
   ) async {
     if (_exporting) return;
+    final selected = _selection(data);
+    if (selected.isEmpty) {
+      context.showFailure('Tick at least one employee to export.');
+      return;
+    }
+    final subset = data.withEmployees(selected);
     setState(() => _exporting = true);
     try {
-      await run(ref.read(exportServiceProvider));
+      await run(ref.read(exportServiceProvider), subset);
     } on AppException catch (error) {
       if (mounted) context.showFailure(error.message);
     } finally {
@@ -65,16 +89,20 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     }
   }
 
-  String? get _selectedEmployeeName {
-    if (_employeeId == null) return null;
-    return ref.read(employeeByIdProvider(_employeeId!))?.name;
+  /// A single ticked employee names the export file; a subset stays generic.
+  String? _exportName(ReportData data) {
+    final selected = _selection(data);
+    if (selected.length != 1) return null;
+    for (final ReportRow row in data.rows) {
+      if (row.employee.id == selected.first) return row.employee.name;
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = (year: year, month: month, employeeId: _employeeId);
+    final query = (year: year, month: month, employeeId: null);
     final reportAsync = ref.watch(reportProvider(query));
-    final employees = ref.watch(employeeListProvider).value ?? <Employee>[];
     final businessName = ref.watch(
       prefsProvider.select((AppPrefs p) => p.businessName),
     );
@@ -100,22 +128,11 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               AppSpacing.lg,
               AppSpacing.md,
             ),
-            child: Column(
-              children: <Widget>[
-                MonthSelector(
-                  year: year,
-                  month: month,
-                  enabled: !_exporting,
-                  onChanged: _onMonthChanged,
-                ),
-                AppSpacing.gapMd,
-                _ScopeSelector(
-                  employees: employees,
-                  selectedId: _employeeId,
-                  enabled: !_exporting,
-                  onChanged: (String? id) => setState(() => _employeeId = id),
-                ),
-              ],
+            child: MonthSelector(
+              year: year,
+              month: month,
+              enabled: !_exporting,
+              onChanged: _onMonthChanged,
             ),
           ),
           Expanded(
@@ -142,7 +159,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            _SummaryLine(data: data),
+                            _SummaryLine(
+                              data: data,
+                              selectedCount: _selection(data).length,
+                            ),
                             AppSpacing.gapMd,
                             _Matrix(
                               data: data,
@@ -150,6 +170,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                               nameColumnWidth: _nameColumnWidth,
                               dayColumnWidth: _dayColumnWidth,
                               totalColumnWidth: _totalColumnWidth,
+                              isSelected: (String id) => _selection(data).contains(id),
+                              onToggle: (String id) => _toggle(data, id),
+                              onToggleAll: (bool all) => _toggleAll(data, all),
                             ),
                             AppSpacing.gapMd,
                             const _Legend(),
@@ -161,24 +184,26 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       exporting: _exporting,
                       onCsv: () => _export(
                         data,
-                        (ExportService service) => service.shareCsv(
-                          data,
-                          employeeName: _selectedEmployeeName,
-                          businessName: businessName,
-                        ),
+                        (ExportService service, ReportData subset) =>
+                            service.shareCsv(
+                              subset,
+                              employeeName: _exportName(data),
+                              businessName: businessName,
+                            ),
                       ),
                       onPdf: () => _export(
                         data,
-                        (ExportService service) => service.sharePdf(
-                          data,
-                          businessName: businessName,
-                          employeeName: _selectedEmployeeName,
-                        ),
+                        (ExportService service, ReportData subset) =>
+                            service.sharePdf(
+                              subset,
+                              businessName: businessName,
+                              employeeName: _exportName(data),
+                            ),
                       ),
                       onPrint: () => _export(
                         data,
-                        (ExportService service) =>
-                            service.printPdf(data, businessName: businessName),
+                        (ExportService service, ReportData subset) =>
+                            service.printPdf(subset, businessName: businessName),
                       ),
                     ),
                   ],
@@ -192,64 +217,40 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   }
 }
 
-class _ScopeSelector extends StatelessWidget {
-  const _ScopeSelector({
-    required this.employees,
-    required this.selectedId,
-    required this.enabled,
-    required this.onChanged,
-  });
+class _SummaryLine extends StatelessWidget {
+  const _SummaryLine({required this.data, required this.selectedCount});
 
-  final List<Employee> employees;
-  final String? selectedId;
-  final bool enabled;
-  final ValueChanged<String?> onChanged;
+  final ReportData data;
+  final int selectedCount;
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String?>(
-      initialValue: selectedId,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        prefixIcon: Icon(Icons.filter_alt_outlined),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          '$selectedCount of ${data.rows.length} '
+          '${data.rows.length == 1 ? 'employee' : 'employees'} ticked · '
+          '${data.daysMarked} of ${data.daysInMonth} days marked',
+          style: context.text.bodySmall,
         ),
-      ),
-      onChanged: enabled ? onChanged : null,
-      items: <DropdownMenuItem<String?>>[
-        const DropdownMenuItem<String?>(child: Text('All employees')),
-        for (final Employee employee in employees)
-          DropdownMenuItem<String?>(
-            value: employee.id,
-            child: Text(
-              employee.isActive ? employee.name : '${employee.name} (inactive)',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+        if (data.hasSalary) ...<Widget>[
+          const SizedBox(height: 2),
+          Text(
+            'Total pay ${Money.format(data.totalSalary)}',
+            style: context.text.bodySmall?.copyWith(
+              color: context.colors.primary,
+              fontWeight: FontWeight.w600,
             ),
           ),
+        ],
       ],
     );
   }
 }
 
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.data});
-
-  final ReportData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      '${data.rows.length} ${data.rows.length == 1 ? 'employee' : 'employees'} · '
-      '${data.daysMarked} of ${data.daysInMonth} days marked',
-      style: context.text.bodySmall,
-    );
-  }
-}
-
-/// Horizontally scrollable matrix with a frozen name column.
+/// Horizontally scrollable matrix with a frozen name column. Each employee has
+/// a tickbox in that frozen column; only ticked rows are exported.
 class _Matrix extends StatelessWidget {
   const _Matrix({
     required this.data,
@@ -257,44 +258,81 @@ class _Matrix extends StatelessWidget {
     required this.nameColumnWidth,
     required this.dayColumnWidth,
     required this.totalColumnWidth,
+    required this.isSelected,
+    required this.onToggle,
+    required this.onToggleAll,
   });
+
+  static const double _salaryColumnWidth = 78;
 
   final ReportData data;
   final double rowHeight;
   final double nameColumnWidth;
   final double dayColumnWidth;
   final double totalColumnWidth;
+  final bool Function(String id) isSelected;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<bool> onToggleAll;
 
   @override
   Widget build(BuildContext context) {
+    final int selectedCount =
+        data.rows.where((ReportRow r) => isSelected(r.employee.id)).length;
+    final bool allSelected =
+        data.rows.isNotEmpty && selectedCount == data.rows.length;
+    final bool? headerValue = allSelected
+        ? true
+        : (selectedCount == 0 ? false : null);
+
     return AppCard(
       padding: EdgeInsets.zero,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // Frozen first column.
+          // Frozen first column: tickbox + name.
           SizedBox(
             width: nameColumnWidth,
             child: Column(
               children: <Widget>[
                 _cell(
                   context,
-                  child: Text('Employee', style: context.text.labelSmall),
                   align: Alignment.centerLeft,
                   header: true,
+                  child: Row(
+                    children: <Widget>[
+                      _checkbox(
+                        value: headerValue,
+                        tristate: true,
+                        onChanged: () => onToggleAll(!allSelected),
+                      ),
+                      Flexible(
+                        child: Text('Employee', style: context.text.labelSmall),
+                      ),
+                    ],
+                  ),
                 ),
                 for (final ReportRow row in data.rows)
                   _cell(
                     context,
                     align: Alignment.centerLeft,
-                    child: Text(
-                      row.employee.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.text.bodySmall?.copyWith(
-                        color: context.colors.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      children: <Widget>[
+                        _checkbox(
+                          value: isSelected(row.employee.id),
+                          onChanged: () => onToggle(row.employee.id),
+                        ),
+                        Expanded(
+                          child: Text(
+                            row.employee.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.bodySmall?.copyWith(
+                              color: context.colors.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -337,6 +375,19 @@ class _Matrix extends StatelessWidget {
                             ),
                           ),
                         ),
+                      SizedBox(
+                        width: _salaryColumnWidth,
+                        child: _cell(
+                          context,
+                          header: true,
+                          child: Text(
+                            'Salary',
+                            style: context.text.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   for (final ReportRow row in data.rows)
@@ -356,6 +407,24 @@ class _Matrix extends StatelessWidget {
                           '${row.totals.totalMarked}',
                           bold: true,
                         ),
+                        SizedBox(
+                          width: _salaryColumnWidth,
+                          child: _cell(
+                            context,
+                            child: Text(
+                              row.hasSalary ? Money.format(row.monthSalary) : '—',
+                              style: context.text.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: row.hasSalary
+                                    ? context.colors.onSurface
+                                    : context.mutedColor,
+                                fontFeatures: const <FontFeature>[
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                 ],
@@ -364,6 +433,20 @@ class _Matrix extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _checkbox({
+    required bool? value,
+    required VoidCallback onChanged,
+    bool tristate = false,
+  }) {
+    return Checkbox(
+      value: value,
+      tristate: tristate,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onChanged: (_) => onChanged(),
     );
   }
 

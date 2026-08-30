@@ -1,6 +1,7 @@
 import type { ReportData, ReportRow } from '../features/report';
 import { AppDate } from './date';
-import { STATUS, hasMobile, totalMarked } from '../types';
+import { round2 } from './money';
+import { STATUS, hasMobile, hasSalary, perDaySalary, totalMarked } from '../types';
 
 /**
  * Builds the monthly attendance CSV — a port of `csv_builder.dart`.
@@ -19,6 +20,8 @@ export function buildCsv(data: ReportData): string {
     'Half Day',
     'Leave',
     'Days Marked',
+    'Per Day Rate',
+    'Salary',
   ]);
 
   for (const row of data.rows) {
@@ -31,6 +34,8 @@ export function buildCsv(data: ReportData): string {
       row.totals.halfDay,
       row.totals.leave,
       totalMarked(row.totals),
+      hasSalary(row.employee) ? round2(perDaySalary(row.employee)) : '',
+      row.hasSalary ? round2(row.salary) : '',
     ]);
   }
 

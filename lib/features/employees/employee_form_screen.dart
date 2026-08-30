@@ -6,6 +6,7 @@ import '../../core/errors/app_exception.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/money.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_dialogs.dart';
@@ -68,9 +69,11 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
   late final TextEditingController _nameController;
   late final TextEditingController _mobileController;
   late final TextEditingController _addressController;
+  late final TextEditingController _salaryController;
 
   late DateTime _joinedOn;
   late bool _isActive;
+  late SalaryType _salaryType;
 
   bool _submitting = false;
   String? _errorMessage;
@@ -84,8 +87,14 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
     _nameController = TextEditingController(text: employee?.name ?? '');
     _mobileController = TextEditingController(text: employee?.mobile ?? '');
     _addressController = TextEditingController(text: employee?.address ?? '');
+    _salaryController = TextEditingController(
+      text: (employee?.salaryAmount == null)
+          ? ''
+          : Money.plain(employee!.salaryAmount!).replaceAll(',', ''),
+    );
     _joinedOn = employee?.joinedOn ?? AppDate.today();
     _isActive = employee?.isActive ?? true;
+    _salaryType = employee?.salaryType ?? SalaryType.perDay;
   }
 
   @override
@@ -93,7 +102,18 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
     _nameController.dispose();
     _mobileController.dispose();
     _addressController.dispose();
+    _salaryController.dispose();
     super.dispose();
+  }
+
+  /// The live "≈ ₹X/day" hint shown under a monthly wage.
+  String? get _derivedRateHint {
+    final amount = Validators.parseAmount(_salaryController.text);
+    if (amount == null || amount <= 0) return null;
+    if (_salaryType == SalaryType.monthly) {
+      return '≈ ${Money.format(amount / Employee.daysInSalaryMonth)} per day';
+    }
+    return '≈ ${Money.format(amount * Employee.daysInSalaryMonth)} per month';
   }
 
   Future<void> _pickJoiningDate() async {
@@ -122,6 +142,7 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
 
     final mobile = _mobileController.text.trim();
     final address = _addressController.text.trim();
+    final salaryAmount = Validators.parseAmount(_salaryController.text);
 
     final draft = Employee(
       id: widget.employee?.id ?? '',
@@ -130,6 +151,8 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
       address: address.isEmpty ? null : address,
       isActive: _isEditing ? _isActive : true,
       joinedOn: _joinedOn,
+      salaryType: _salaryType,
+      salaryAmount: salaryAmount,
     );
 
     try {
@@ -290,6 +313,61 @@ class _EmployeeFormState extends ConsumerState<_EmployeeForm> {
                         ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+              AppSpacing.gapCards,
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('Salary', style: context.text.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Optional. Used to work out pay in reports.',
+                      style: context.text.bodySmall?.copyWith(
+                        color: context.mutedColor,
+                      ),
+                    ),
+                    AppSpacing.gapMd,
+                    SegmentedButton<SalaryType>(
+                      showSelectedIcon: false,
+                      segments: <ButtonSegment<SalaryType>>[
+                        for (final SalaryType type in SalaryType.values)
+                          ButtonSegment<SalaryType>(
+                            value: type,
+                            label: Text(type.label),
+                          ),
+                      ],
+                      selected: <SalaryType>{_salaryType},
+                      onSelectionChanged: _submitting
+                          ? null
+                          : (Set<SalaryType> selection) =>
+                                setState(() => _salaryType = selection.first),
+                    ),
+                    AppSpacing.gapLg,
+                    TextFormField(
+                      controller: _salaryController,
+                      enabled: !_submitting,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[0-9.]'),
+                        ),
+                      ],
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: _salaryType == SalaryType.monthly
+                            ? 'Monthly salary'
+                            : 'Per-day salary',
+                        prefixText: '₹ ',
+                        prefixIcon: const Icon(Icons.currency_rupee_rounded),
+                        helperText: _derivedRateHint ?? 'Optional',
+                      ),
+                      validator: Validators.salaryOptional,
+                    ),
                   ],
                 ),
               ),

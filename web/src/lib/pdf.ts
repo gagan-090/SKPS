@@ -1,9 +1,10 @@
 import { GState, jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-import type { ReportData, ReportRow } from '../features/report';
+import { reportHasSalary, totalSalary, type ReportData, type ReportRow } from '../features/report';
 import { SKPS_MARK_PNG } from './brandMark';
 import { AppDate } from './date';
+import { rupees } from './money';
 import { STATUS, hasMobile, displayMobile, totalMarked } from '../types';
 
 const MARK = `data:image/png;base64,${SKPS_MARK_PNG}`;
@@ -46,6 +47,8 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
   );
   doc.setTextColor(0);
 
+  const showSalary = reportHasSalary(data);
+
   const head = [
     [
       'Employee',
@@ -55,23 +58,50 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
       'H',
       'L',
       'Days',
+      'Salary',
     ],
   ];
 
   const body = data.rows.map((row) => [
     row.employee.name +
-      (hasMobile(row.employee.mobile) ? `\n${displayMobile(row.employee.mobile)}` : ''),
+    (hasMobile(row.employee.mobile) ? `\n${displayMobile(row.employee.mobile)}` : ''),
     ...Array.from({ length: data.daysInMonth }, (_, i) => cell(data, row, i + 1)),
     String(row.totals.present),
     String(row.totals.absent),
     String(row.totals.halfDay),
     String(row.totals.leave),
     String(totalMarked(row.totals)),
+    row.hasSalary ? rupees(row.salary) : '-',
   ]);
+
+  const sums = data.rows.reduce(
+    (acc, r) => ({
+      present: acc.present + r.totals.present,
+      absent: acc.absent + r.totals.absent,
+      halfDay: acc.halfDay + r.totals.halfDay,
+      leave: acc.leave + r.totals.leave,
+      days: acc.days + totalMarked(r.totals),
+    }),
+    { present: 0, absent: 0, halfDay: 0, leave: 0, days: 0 },
+  );
+
+  const foot = [
+    [
+      'Total',
+      { content: '', colSpan: data.daysInMonth },
+      String(sums.present),
+      String(sums.absent),
+      String(sums.halfDay),
+      String(sums.leave),
+      String(sums.days),
+      showSalary ? rupees(totalSalary(data)) : '-',
+    ],
+  ];
 
   autoTable(doc, {
     head,
     body,
+    foot,
     startY: 74,
     theme: 'grid',
     styles: {
@@ -87,6 +117,12 @@ export function buildPdf(data: ReportData, businessName: string): jsPDF {
     headStyles: {
       fillColor: [48, 116, 189],
       textColor: 255,
+      fontStyle: 'bold',
+      fontSize: 6.5,
+    },
+    footStyles: {
+      fillColor: [227, 239, 233],
+      textColor: 20,
       fontStyle: 'bold',
       fontSize: 6.5,
     },

@@ -14,17 +14,39 @@ import { attendanceRepo } from '../data/attendance';
 import { employeeRepo } from '../data/employees';
 import { useAsync } from '../hooks/useAsync';
 import { AppDate } from '../lib/date';
+import { formatINR, round2 } from '../lib/money';
 import {
   type AttendanceRecord,
   type Employee,
   type StatusKey,
   STATUS,
+  defaultAmountFor,
+  hasSalary,
+  perDaySalary,
   wasEmployedOn,
 } from '../types';
 
 interface Draft {
   status: StatusKey | null;
   note: string;
+  /** Raw text of the pay for the day, pre-filled from the rate then editable. */
+  amount: string;
+  /** True once the owner typed the amount, so it is not re-derived on status change. */
+  amountManual: boolean;
+}
+
+function parseAmount(text: string): number | null {
+  const t = text.trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** The pay to pre-fill for a status at the employee's rate, or null when zero. */
+function defaultPay(employee: Employee, status: StatusKey): number | null {
+  if (!hasSalary(employee)) return null;
+  const value = defaultAmountFor(employee, status);
+  return value > 0 ? round2(value) : null;
 }
 
 /**
@@ -59,9 +81,18 @@ export default function MarkAttendance() {
     const next = new Map<string, Draft>();
     for (const employee of data.employees) {
       const existing = byEmployee.get(employee.id);
+      const status = existing?.status ?? null;
+      const manual = existing?.amount != null;
+      const amount = manual
+        ? String(existing!.amount)
+        : status
+          ? (defaultPay(employee, status)?.toString() ?? '')
+          : '';
       next.set(employee.id, {
-        status: existing?.status ?? null,
+        status,
         note: existing?.note ?? '',
+        amount,
+        amountManual: manual,
       });
     }
     setDrafts(next);
@@ -80,8 +111,26 @@ export default function MarkAttendance() {
   function update(employeeId: string, patch: Partial<Draft>) {
     setDrafts((current) => {
       const next = new Map(current);
-      const existing = next.get(employeeId) ?? { status: null, note: '' };
+      const existing = next.get(employeeId) ?? { status: null, note: '', amount: '', amountManual: false };
       next.set(employeeId, { ...existing, ...patch });
+      return next;
+    });
+  }
+
+  /** Picks a status and auto-fills the pay from the rate, unless set by hand. */
+  function pickStatus(employee: Employee, status: StatusKey) {
+    setDrafts((current) => {
+      const next = new Map(current);
+      const d = next.get(employee.id) ?? {
+        status: null,
+        note: '',
+        amount: '',
+        amountManual: false,
+      };
+      const amount = d.amountManual
+        ? d.amount
+        : (defaultPay(employee, status)?.toString() ?? '');
+      next.set(employee.id, { ...d, status, amount });
       return next;
     });
   }
@@ -90,8 +139,16 @@ export default function MarkAttendance() {
     setDrafts((current) => {
       const next = new Map(current);
       for (const employee of eligible) {
-        const existing = next.get(employee.id) ?? { status: null, note: '' };
-        next.set(employee.id, { ...existing, status: 'present' });
+        const existing = next.get(employee.id) ?? {
+          status: null,
+          note: '',
+          amount: '',
+          amountManual: false,
+        };
+        const amount = existing.amountManual
+          ? existing.amount
+          : (defaultPay(employee, 'present')?.toString() ?? '');
+        next.set(employee.id, { ...existing, status: 'present', amount });
       }
       return next;
     });
@@ -107,6 +164,7 @@ export default function MarkAttendance() {
         day: date,
         status: draft.status,
         note: draft.note.trim() || null,
+        amount: parseAmount(draft.amount),
         markedAt: null,
       });
     }
@@ -182,7 +240,7 @@ export default function MarkAttendance() {
 
           <div className="card list">
             {eligible.map((employee) => {
-              const draft = drafts.get(employee.id) ?? { status: null, note: '' };
+              const draft = drafts.get(employee.id) ?? { status: null, note: '', amount: '', amountManual: false };
               const noteOpen = expandedNote === employee.id || draft.note.length > 0;
 
               return (
@@ -198,7 +256,7 @@ export default function MarkAttendance() {
 
                   <StatusSelector
                     value={draft.status}
-                    onChange={(status) => update(employee.id, { status })}
+                    onChange={(status) => pickStatus(employee, status)}
                     onClear={
                       draft.status ? () => update(employee.id, { status: null }) : undefined
                     }
@@ -213,6 +271,39 @@ export default function MarkAttendance() {
                   >
                     {draft.note ? 'Note •' : 'Note'}
                   </Button>
+
+                  {draft.status && (
+                    <label
+                      className="row"
+                      style={{ flexBasis: '100%', gap: 8, marginTop: 4 }}
+                    >
+                      <span className="field__label" style={{ minWidth: 60 }}>
+                        ₹ Amount
+                      </span>
+                      <input
+                        className="input"
+                        style={{ maxWidth: 140 }}
+                        inputMode="decimal"
+                        placeholder={
+                          hasSalary(employee)
+                            ? String(round2(defaultAmountFor(employee, draft.status)))
+                            : 'Optional'
+                        }
+                        value={draft.amount}
+                        onChange={(e) =>
+                          update(employee.id, {
+                            amount: e.target.value.replace(/[^0-9.]/g, ''),
+                            amountManual: true,
+                          })
+                        }
+                      />
+                      {hasSalary(employee) && (
+                        <span className="field__hint">
+                          from {formatINR(perDaySalary(employee))}/day
+                        </span>
+                      )}
+                    </label>
+                  )}
 
                   {noteOpen && (
                     <input

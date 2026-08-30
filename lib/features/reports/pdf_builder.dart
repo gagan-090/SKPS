@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/config/app_info.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/money.dart';
 import '../../data/models/attendance_status.dart';
 import 'report_controller.dart';
 
@@ -204,6 +205,7 @@ class PdfBuilder {
       for (int i = 0; i < 4; i++)
         data.daysInMonth + 1 + i: const pw.FixedColumnWidth(26),
       data.daysInMonth + 5: const pw.FixedColumnWidth(30),
+      data.daysInMonth + 6: const pw.FixedColumnWidth(52),
     };
 
     return pw.Table(
@@ -223,6 +225,7 @@ class PdfBuilder {
             _headerCell('H'),
             _headerCell('L'),
             _headerCell('Days'),
+            _headerCell('Salary'),
           ],
         ),
         for (final ReportRow row in data.rows)
@@ -236,8 +239,55 @@ class PdfBuilder {
               _totalCell('${row.totals.halfDay}'),
               _totalCell('${row.totals.leave}'),
               _totalCell('${row.totals.totalMarked}', bold: true),
+              _totalCell(
+                row.hasSalary ? Money.rupees(row.monthSalary) : '-',
+                align: pw.Alignment.centerRight,
+              ),
             ],
           ),
+        _totalsRow(data),
+      ],
+    );
+  }
+
+  /// Grand-total footer row: column sums plus the total pay.
+  static pw.TableRow _totalsRow(ReportData data) {
+    var present = 0, absent = 0, halfDay = 0, leave = 0, days = 0;
+    for (final ReportRow row in data.rows) {
+      present += row.totals.present;
+      absent += row.totals.absent;
+      halfDay += row.totals.halfDay;
+      leave += row.totals.leave;
+      days += row.totals.totalMarked;
+    }
+
+    return pw.TableRow(
+      decoration: const pw.BoxDecoration(color: _headerFill),
+      children: <pw.Widget>[
+        pw.Container(
+          alignment: pw.Alignment.centerLeft,
+          padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          child: pw.Text(
+            'Total',
+            style: pw.TextStyle(
+              fontSize: 7.5,
+              fontWeight: pw.FontWeight.bold,
+              color: _ink,
+            ),
+          ),
+        ),
+        for (int day = 1; day <= data.daysInMonth; day++)
+          pw.SizedBox(),
+        _totalCell('$present', bold: true),
+        _totalCell('$absent', bold: true),
+        _totalCell('$halfDay', bold: true),
+        _totalCell('$leave', bold: true),
+        _totalCell('$days', bold: true),
+        _totalCell(
+          data.hasSalary ? Money.rupees(data.totalSalary) : '-',
+          bold: true,
+          align: pw.Alignment.centerRight,
+        ),
       ],
     );
   }
@@ -316,14 +366,19 @@ class PdfBuilder {
     );
   }
 
-  static pw.Widget _totalCell(String text, {bool bold = false}) {
+  static pw.Widget _totalCell(
+    String text, {
+    bool bold = false,
+    pw.Alignment align = pw.Alignment.center,
+  }) {
     return pw.Container(
-      alignment: pw.Alignment.center,
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      alignment: align,
+      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3),
       child: pw.Text(
         text,
+        maxLines: 1,
         style: pw.TextStyle(
-          fontSize: 7,
+          fontSize: 6.8,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
           color: _ink,
         ),

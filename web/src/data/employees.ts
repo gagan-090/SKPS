@@ -4,6 +4,7 @@ import { AppDate } from '../lib/date';
 import {
   type Employee,
   type EmployeeRow,
+  type SalaryType,
   employeeFromRow,
   employeeToRow,
 } from '../types';
@@ -16,6 +17,8 @@ export interface EmployeeDraft {
   address: string | null;
   isActive: boolean;
   joinedOn: Date;
+  salaryType: SalaryType;
+  salaryAmount: number | null;
 }
 
 /** The only place `employees` rows are read or written. */
@@ -120,6 +123,8 @@ export const emptyDraft = (): EmployeeDraft => ({
   address: null,
   isActive: true,
   joinedOn: AppDate.today(),
+  salaryType: 'per_day',
+  salaryAmount: null,
 });
 
 export const draftFrom = (e: Employee): EmployeeDraft => ({
@@ -128,4 +133,6 @@ export const draftFrom = (e: Employee): EmployeeDraft => ({
   address: e.address,
   isActive: e.isActive,
   joinedOn: e.joinedOn,
+  salaryType: e.salaryType,
+  salaryAmount: e.salaryAmount,
 });

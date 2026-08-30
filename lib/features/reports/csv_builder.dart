@@ -24,6 +24,8 @@ class CsvBuilder {
       'Half Day',
       'Leave',
       'Days Marked',
+      'Per Day Rate',
+      'Salary',
     ]);
 
     for (final ReportRow row in data.rows) {
@@ -36,10 +38,18 @@ class CsvBuilder {
         row.totals.halfDay,
         row.totals.leave,
         row.totals.totalMarked,
+        row.employee.hasSalary ? _round(row.employee.perDaySalary) : '',
+        row.hasSalary ? _round(row.monthSalary) : '',
       ]);
     }
 
     return _codec.encode(rows);
+  }
+
+  /// Keeps salary numbers spreadsheet-friendly: an int when whole, else 2 dp.
+  static num _round(double value) {
+    final rounded = double.parse(value.toStringAsFixed(2));
+    return rounded == rounded.roundToDouble() ? rounded.toInt() : rounded;
   }
 
   static String _cell(ReportData data, ReportRow row, int day) {

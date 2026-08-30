@@ -7,6 +7,8 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/money.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_dialogs.dart';
 import '../../core/widgets/empty_state.dart';
@@ -214,6 +216,8 @@ class _MarkBody extends ConsumerWidget {
                 onToggleNote: () => controller.toggleNote(employee.id),
                 onNoteChanged: (String note) =>
                     controller.setNote(employee.id, note),
+                onAmountChanged: (double? amount) =>
+                    controller.setAmount(employee.id, amount),
               );
             },
           ),
@@ -310,6 +314,7 @@ class _MarkRow extends StatefulWidget {
     required this.onStatus,
     required this.onToggleNote,
     required this.onNoteChanged,
+    required this.onAmountChanged,
   });
 
   final Employee employee;
@@ -318,6 +323,7 @@ class _MarkRow extends StatefulWidget {
   final ValueChanged<AttendanceStatus> onStatus;
   final VoidCallback onToggleNote;
   final ValueChanged<String> onNoteChanged;
+  final ValueChanged<double?> onAmountChanged;
 
   @override
   State<_MarkRow> createState() => _MarkRowState();
@@ -327,11 +333,40 @@ class _MarkRowState extends State<_MarkRow> {
   late final TextEditingController _noteController = TextEditingController(
     text: widget.entry.note ?? '',
   );
+  late final TextEditingController _amountController = TextEditingController(
+    text: widget.entry.amount == null
+        ? ''
+        : Money.plain(widget.entry.amount!).replaceAll(',', ''),
+  );
+
+  @override
+  void didUpdateWidget(_MarkRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reflect an auto-filled amount (e.g. after picking a status) in the field,
+    // but never overwrite an amount the owner is typing by hand.
+    if (!widget.entry.amountManual) {
+      final text = widget.entry.amount == null
+          ? ''
+          : Money.plain(widget.entry.amount!).replaceAll(',', '');
+      if (text != _amountController.text) {
+        _amountController.text = text;
+      }
+    }
+  }
 
   @override
   void dispose() {
     _noteController.dispose();
+    _amountController.dispose();
     super.dispose();
+  }
+
+  /// Hint under the amount field explaining where the pre-filled value comes
+  /// from, so the owner knows it is the profile rate they can override.
+  String get _amountHint {
+    final employee = widget.employee;
+    if (!employee.hasSalary) return 'Optional — leave blank to skip';
+    return 'From ${Money.format(employee.perDaySalary)}/day rate · edit to override';
   }
 
   @override
@@ -382,6 +417,28 @@ class _MarkRowState extends State<_MarkRow> {
             enabled: widget.enabled,
             onSelected: widget.onStatus,
           ),
+          if (entry.status != null) ...<Widget>[
+            AppSpacing.gapMd,
+            TextField(
+              controller: _amountController,
+              enabled: widget.enabled,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
+              onChanged: (String value) =>
+                  widget.onAmountChanged(Validators.parseAmount(value)),
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '₹ ',
+                prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 20),
+                helperText: _amountHint,
+                isDense: true,
+              ),
+            ),
+          ],
           if (entry.noteVisible) ...<Widget>[
             AppSpacing.gapMd,
             TextField(

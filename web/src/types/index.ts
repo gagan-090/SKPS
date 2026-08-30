@@ -35,6 +35,19 @@ export function statusFromDb(value: string | null | undefined): StatusKey {
    Employee
    ------------------------------------------------------------------------- */
 
+/** How an employee's `salaryAmount` should be read. */
+export type SalaryType = 'per_day' | 'monthly';
+
+/**
+ * A monthly wage is spread over a nominal 30-day month to get a daily rate.
+ * Mirrors `Employee.daysInSalaryMonth` in the Flutter app.
+ */
+export const DAYS_IN_SALARY_MONTH = 30;
+
+export function salaryTypeFromDb(value: string | null | undefined): SalaryType {
+  return value === 'monthly' ? 'monthly' : 'per_day';
+}
+
 export interface Employee {
   id: string;
   ownerId?: string | null;
@@ -44,6 +57,10 @@ export interface Employee {
   address: string | null;
   isActive: boolean;
   joinedOn: Date;
+  /** Whether `salaryAmount` is a daily rate or a monthly wage. */
+  salaryType: SalaryType;
+  /** The configured wage in rupees, or null when no wage is on file. */
+  salaryAmount: number | null;
   createdAt: Date | null;
 }
 
@@ -55,7 +72,16 @@ export interface EmployeeRow {
   address: string | null;
   is_active: boolean | null;
   joined_on: string | null;
+  salary_type: string | null;
+  salary_amount: number | string | null;
   created_at: string | null;
+}
+
+/** Postgres `numeric` can arrive as a number or a string; tolerate both. */
+function toNumber(value: number | string | null | undefined): number | null {
+  if (value == null) return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function employeeFromRow(row: EmployeeRow): Employee {
@@ -67,6 +93,8 @@ export function employeeFromRow(row: EmployeeRow): Employee {
     address: row.address?.trim() || null,
     isActive: row.is_active ?? true,
     joinedOn: AppDate.parseYmd(row.joined_on ?? ''),
+    salaryType: salaryTypeFromDb(row.salary_type),
+    salaryAmount: toNumber(row.salary_amount),
     createdAt: row.created_at ? new Date(row.created_at) : null,
   };
 }
@@ -79,7 +107,31 @@ export function employeeToRow(e: Omit<Employee, 'id' | 'createdAt' | 'ownerId'>)
     address: e.address?.trim() || null,
     is_active: e.isActive,
     joined_on: AppDate.ymd(e.joinedOn),
+    salary_type: e.salaryType,
+    salary_amount: e.salaryAmount,
   };
+}
+
+/** True when a usable wage has been entered. */
+export function hasSalary(e: Employee): boolean {
+  return (e.salaryAmount ?? 0) > 0;
+}
+
+/** The daily rate in rupees, derived from a monthly wage when needed. */
+export function perDaySalary(e: Employee): number {
+  const amount = e.salaryAmount ?? 0;
+  return e.salaryType === 'monthly' ? amount / DAYS_IN_SALARY_MONTH : amount;
+}
+
+/** The monthly wage in rupees, derived from a daily rate when needed. */
+export function monthlySalary(e: Employee): number {
+  const amount = e.salaryAmount ?? 0;
+  return e.salaryType === 'monthly' ? amount : amount * DAYS_IN_SALARY_MONTH;
+}
+
+/** What one day of `status` is worth at this employee's rate, before override. */
+export function defaultAmountFor(e: Employee, status: StatusKey): number {
+  return perDaySalary(e) * STATUS[status].dayValue;
 }
 
 export function hasMobile(mobile: string | null | undefined): boolean {
@@ -110,6 +162,8 @@ export interface AttendanceRecord {
   day: Date;
   status: StatusKey;
   note: string | null;
+  /** Manual pay override in rupees, or null to derive it from the daily rate. */
+  amount: number | null;
   markedAt: Date | null;
 }
 
@@ -120,6 +174,7 @@ export interface AttendanceRow {
   day: string | null;
   status: string | null;
   note: string | null;
+  amount: number | string | null;
   marked_at: string | null;
 }
 
@@ -131,6 +186,7 @@ export function attendanceFromRow(row: AttendanceRow): AttendanceRecord {
     day: AppDate.parseYmd(row.day ?? ''),
     status: statusFromDb(row.status),
     note: row.note?.trim() || null,
+    amount: toNumber(row.amount),
     markedAt: row.marked_at ? new Date(row.marked_at) : null,
   };
 }
@@ -142,7 +198,16 @@ export function attendanceToRow(r: AttendanceRecord) {
     day: AppDate.ymd(r.day),
     status: r.status,
     note: r.note?.trim() || null,
+    amount: r.amount ?? null,
   };
+}
+
+/**
+ * The pay for one attendance record: its manual override, or the amount derived
+ * from the employee's daily rate and this day's status.
+ */
+export function resolvedAmount(record: AttendanceRecord, employee: Employee): number {
+  return record.amount ?? defaultAmountFor(employee, record.status);
 }
 
 export const dayKey = (r: AttendanceRecord): string => AppDate.ymd(r.day);

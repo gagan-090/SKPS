@@ -7,23 +7,32 @@ import {
   Avatar,
   Banner,
   Button,
+  Field,
   Loading,
   Modal,
   StatusSelector,
 } from '../components/ui';
 import { useToast } from '../context/ToastContext';
 import { attendanceRepo } from '../data/attendance';
-import { employeeRepo } from '../data/employees';
+import { draftFrom, employeeRepo } from '../data/employees';
 import { useAsync } from '../hooks/useAsync';
 import { AppDate } from '../lib/date';
+import { formatINR } from '../lib/money';
 import {
   type AttendanceRecord,
   type Employee,
+  type SalaryType,
   type StatusKey,
+  DAYS_IN_SALARY_MONTH,
   STATUS,
+  defaultAmountFor,
   displayMobile,
   hasMobile,
+  hasSalary,
+  monthlySalary,
   payableDays,
+  perDaySalary,
+  resolvedAmount,
   totalsFor,
 } from '../types';
 
@@ -37,7 +46,13 @@ export default function EmployeeDetail() {
 
   const [editingDay, setEditingDay] = useState<number | null>(null);
   const [note, setNote] = useState('');
+  const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const [editingSalary, setEditingSalary] = useState(false);
+  const [salType, setSalType] = useState<SalaryType>('per_day');
+  const [salAmount, setSalAmount] = useState('');
+  const [savingSalary, setSavingSalary] = useState(false);
 
   const { data, loading, error, reload } = useAsync<{
     employee: Employee;
@@ -67,13 +82,24 @@ export default function EmployeeDetail() {
     [id, data],
   );
 
+  const monthSalary = useMemo(() => {
+    if (!data) return 0;
+    return (data.records ?? []).reduce(
+      (sum, record) => sum + resolvedAmount(record, data.employee),
+      0,
+    );
+  }, [data]);
+
   function openDay(day: number) {
+    const record = byDay.get(day);
     setEditingDay(day);
-    setNote(byDay.get(day)?.note ?? '');
+    setNote(record?.note ?? '');
+    setAmount(record?.amount != null ? String(record.amount) : '');
   }
 
   async function setStatus(status: StatusKey) {
     if (editingDay == null || !data) return;
+    const parsed = amount.trim() === '' ? null : Number(amount);
     setBusy(true);
     try {
       await attendanceRepo.upsertOne({
@@ -81,6 +107,7 @@ export default function EmployeeDetail() {
         day: new Date(year, month - 1, editingDay),
         status,
         note: note.trim() || null,
+        amount: parsed != null && Number.isFinite(parsed) && parsed >= 0 ? parsed : null,
         markedAt: null,
       });
       notify('Saved');
@@ -110,6 +137,48 @@ export default function EmployeeDetail() {
       setBusy(false);
     }
   }
+
+  function openSalary() {
+    if (!data) return;
+    setSalType(data.employee.salaryType);
+    setSalAmount(
+      data.employee.salaryAmount == null ? '' : String(data.employee.salaryAmount),
+    );
+    setEditingSalary(true);
+  }
+
+  async function persistSalary(nextAmount: number | null, nextType: SalaryType) {
+    if (!data) return;
+    setSavingSalary(true);
+    try {
+      await employeeRepo.update(data.employee.id, {
+        ...draftFrom(data.employee),
+        salaryType: nextType,
+        salaryAmount: nextAmount,
+      });
+      notify(nextAmount == null ? 'Salary removed' : 'Salary saved');
+      setEditingSalary(false);
+      reload();
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setSavingSalary(false);
+    }
+  }
+
+  function saveSalary() {
+    const n = salAmount.trim() === '' ? null : Number(salAmount);
+    const value = n != null && Number.isFinite(n) && n >= 0 ? n : null;
+    persistSalary(value, salType);
+  }
+
+  const salNum = salAmount.trim() === '' ? null : Number(salAmount);
+  const salRateHint =
+    salNum && Number.isFinite(salNum) && salNum > 0
+      ? salType === 'monthly'
+        ? `≈ ${formatINR(salNum / DAYS_IN_SALARY_MONTH)} per day`
+        : `≈ ${formatINR(salNum * DAYS_IN_SALARY_MONTH)} per month`
+      : 'Leave blank to skip';
 
   if (loading && !data) {
     return (
@@ -180,7 +249,39 @@ export default function EmployeeDetail() {
           <MiniTile label="Half Day" value={totals.halfDay} color={STATUS.half_day.color} />
           <MiniTile label="Leave" value={totals.leave} color={STATUS.leave.color} />
           <MiniTile label="Payable days" value={payableDays(totals)} color="var(--primary)" />
+          {(hasSalary(employee) || monthSalary > 0) && (
+            <MiniTile label="Salary" value={formatINR(monthSalary)} color="var(--primary)" />
+          )}
         </div>
+
+        <section className="card">
+          <div className="card__head">
+            <h2>Salary</h2>
+            <Button variant="ghost" size="sm" onClick={openSalary}>
+              {hasSalary(employee) ? 'Edit' : '+ Add salary'}
+            </Button>
+          </div>
+          <div style={{ padding: 'var(--sp-4) var(--sp-5)' }}>
+            {hasSalary(employee) ? (
+              <div className="row" style={{ gap: 'var(--sp-4)', flexWrap: 'wrap' }}>
+                <div className="tabnums" style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                  {formatINR(perDaySalary(employee))}
+                  <span className="muted small" style={{ fontWeight: 500 }}> / day</span>
+                </div>
+                <span className="muted small">
+                  {employee.salaryType === 'monthly'
+                    ? `${formatINR(monthlySalary(employee))} per month`
+                    : `≈ ${formatINR(monthlySalary(employee))} per month`}
+                </span>
+              </div>
+            ) : (
+              <p className="small muted" style={{ margin: 0 }}>
+                No salary set yet. Add a daily or monthly wage to see this person&apos;s pay
+                in reports.
+              </p>
+            )}
+          </div>
+        </section>
 
         <section className="card">
           <div className="card__head">
@@ -241,6 +342,24 @@ export default function EmployeeDetail() {
             </div>
 
             <label className="field">
+              <span className="field__label">Amount (₹, optional)</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder={
+                  hasSalary(employee)
+                    ? `Default ${formatINR(defaultAmountFor(employee, existing?.status ?? 'present'))}`
+                    : 'Leave blank to skip'
+                }
+              />
+              <span className="field__hint">
+                Overrides the pay derived from the daily rate for this day.
+              </span>
+            </label>
+
+            <label className="field">
               <span className="field__label">Note (optional)</span>
               <textarea
                 className="textarea"
@@ -249,9 +368,69 @@ export default function EmployeeDetail() {
                 placeholder="Reason, half-day timing, etc."
               />
               <span className="field__hint">
-                The note is saved together with the status you pick above.
+                The note and amount are saved together with the status you pick above.
               </span>
             </label>
+          </div>
+        </Modal>
+      )}
+
+      {editingSalary && (
+        <Modal
+          title="Salary"
+          onClose={() => setEditingSalary(false)}
+          footer={
+            <>
+              {hasSalary(employee) && (
+                <Button
+                  variant="quiet"
+                  onClick={() => persistSalary(null, employee.salaryType)}
+                  disabled={savingSalary}
+                >
+                  Remove
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => setEditingSalary(false)}
+                disabled={savingSalary}
+              >
+                Cancel
+              </Button>
+              <Button onClick={saveSalary} loading={savingSalary}>
+                Save
+              </Button>
+            </>
+          }
+        >
+          <div className="stack" style={{ paddingBottom: 4 }}>
+            <div className="field">
+              <span className="field__label">Salary type</span>
+              <div className="seg" role="group" aria-label="Salary type">
+                {(['per_day', 'monthly'] as SalaryType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={salType === t}
+                    className={`seg__btn${salType === t ? ' seg__btn--on' : ''}`}
+                    style={salType === t ? { background: 'var(--primary)' } : undefined}
+                    onClick={() => setSalType(t)}
+                  >
+                    {t === 'per_day' ? 'Per day' : 'Monthly'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Field
+              label={salType === 'monthly' ? 'Monthly salary (₹)' : 'Per-day salary (₹)'}
+              value={salAmount}
+              inputMode="decimal"
+              autoFocus
+              hint={salRateHint}
+              onChange={(e) => setSalAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              placeholder="500"
+            />
           </div>
         </Modal>
       )}
@@ -265,7 +444,7 @@ function MiniTile({
   color,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   color: string;
 }) {
   return (

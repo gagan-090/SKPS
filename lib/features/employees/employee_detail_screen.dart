@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/errors/app_exception.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact_launcher.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/money.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_dialogs.dart';
 import '../../core/widgets/employee_avatar.dart';
@@ -47,15 +51,18 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
     DateTime day,
     AttendanceStatus? current,
     String? note,
+    double? amount,
   ) async {
     final result = await showModalBottomSheet<_DayEditResult>(
       context: context,
       isScrollControlled: true,
       builder: (BuildContext ctx) => _DayStatusSheet(
         employeeName: employee.name,
+        perDaySalary: employee.hasSalary ? employee.perDaySalary : null,
         day: day,
         status: current,
         note: note,
+        amount: amount,
       ),
     );
     if (result == null || !mounted) return;
@@ -66,6 +73,7 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       day: day,
       status: result.status,
       note: result.note,
+      amount: result.amount,
     );
     if (!mounted) return;
 
@@ -77,6 +85,37 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
             ? 'Cleared ${AppDate.display(day)}'
             : '${AppDate.display(day)} marked ${result.status!.label}',
       );
+    }
+  }
+
+  /// Opens the inline salary editor and saves the change to the roster.
+  Future<void> _editSalary(Employee employee) async {
+    final result = await showModalBottomSheet<_SalaryResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext ctx) => _SalarySheet(employee: employee),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await ref
+          .read(employeeListProvider.notifier)
+          .updateEmployee(
+            employee.copyWith(
+              salaryType: result.amount == null
+                  ? employee.salaryType
+                  : result.type,
+              salaryAmount: result.amount,
+              clearSalary: result.amount == null,
+            ),
+          );
+      if (!mounted) return;
+      context.showSuccess(
+        result.amount == null ? 'Salary removed' : 'Salary updated',
+      );
+    } on AppException catch (error) {
+      if (!mounted) return;
+      context.showFailure(error.message);
     }
   }
 
@@ -129,8 +168,14 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
               () => ContactLauncher.whatsApp(employee.mobile!),
               'WhatsApp is not installed.',
             ),
-            onEditDay: (DateTime day, AttendanceStatus? status, String? note) =>
-                _editDay(employee, day, status, note),
+            onEditSalary: () => _editSalary(employee),
+            onEditDay:
+                (
+                  DateTime day,
+                  AttendanceStatus? status,
+                  String? note,
+                  double? amount,
+                ) => _editDay(employee, day, status, note, amount),
           );
         },
       ),
@@ -146,6 +191,7 @@ class _DetailBody extends ConsumerWidget {
     required this.onMonthChanged,
     required this.onCall,
     required this.onWhatsApp,
+    required this.onEditSalary,
     required this.onEditDay,
   });
 
@@ -155,7 +201,13 @@ class _DetailBody extends ConsumerWidget {
   final void Function(int year, int month) onMonthChanged;
   final VoidCallback onCall;
   final VoidCallback onWhatsApp;
-  final void Function(DateTime day, AttendanceStatus? status, String? note)
+  final VoidCallback onEditSalary;
+  final void Function(
+    DateTime day,
+    AttendanceStatus? status,
+    String? note,
+    double? amount,
+  )
   onEditDay;
 
   @override
@@ -176,6 +228,8 @@ class _DetailBody extends ConsumerWidget {
           onCall: onCall,
           onWhatsApp: onWhatsApp,
         ),
+        AppSpacing.gapCards,
+        _SalaryCard(employee: employee, onEdit: onEditSalary),
         AppSpacing.gapCards,
         MonthSelector(year: year, month: month, onChanged: onMonthChanged),
         AppSpacing.gapCards,
@@ -344,6 +398,223 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+/// The editable Salary section: shows the rate, or an "Add salary" prompt.
+class _SalaryCard extends StatelessWidget {
+  const _SalaryCard({required this.employee, required this.onEdit});
+
+  final Employee employee;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final has = employee.hasSalary;
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text('Salary', style: context.text.titleMedium),
+              ),
+              TextButton.icon(
+                onPressed: onEdit,
+                icon: Icon(
+                  has ? Icons.edit_outlined : Icons.add_rounded,
+                  size: 18,
+                ),
+                label: Text(has ? 'Edit' : 'Add salary'),
+              ),
+            ],
+          ),
+          if (has) ...<Widget>[
+            AppSpacing.gapSm,
+            Row(
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: context.colors.primaryContainer,
+                    borderRadius: AppRadius.buttonRadius,
+                  ),
+                  child: Icon(
+                    Icons.payments_outlined,
+                    color: context.colors.onPrimaryContainer,
+                  ),
+                ),
+                AppSpacing.wGapLg,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        '${Money.format(employee.perDaySalary)} / day',
+                        style: context.text.titleLarge?.copyWith(
+                          fontFeatures: const <FontFeature>[
+                            FontFeature.tabularFigures(),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        employee.salaryType == SalaryType.monthly
+                            ? '${Money.format(employee.monthlySalary)} per month'
+                            : '≈ ${Money.format(employee.monthlySalary)} per month',
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ] else ...<Widget>[
+            AppSpacing.gapXs,
+            Text(
+              'No salary set yet. Add a daily or monthly wage to see this '
+              "person's pay in reports.",
+              style: context.text.bodyMedium?.copyWith(
+                color: context.mutedColor,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Result of the salary editor. A null [amount] means "remove the salary".
+class _SalaryResult {
+  const _SalaryResult({required this.type, required this.amount});
+
+  final SalaryType type;
+  final double? amount;
+}
+
+/// Bottom sheet to add or change an employee's salary from the detail screen.
+class _SalarySheet extends StatefulWidget {
+  const _SalarySheet({required this.employee});
+
+  final Employee employee;
+
+  @override
+  State<_SalarySheet> createState() => _SalarySheetState();
+}
+
+class _SalarySheetState extends State<_SalarySheet> {
+  late SalaryType _type = widget.employee.salaryType;
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.employee.salaryAmount == null
+        ? ''
+        : Money.plain(widget.employee.salaryAmount!).replaceAll(',', ''),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String? get _hint {
+    final amount = Validators.parseAmount(_controller.text);
+    if (amount == null || amount <= 0) return null;
+    return _type == SalaryType.monthly
+        ? '≈ ${Money.format(amount / Employee.daysInSalaryMonth)} per day'
+        : '≈ ${Money.format(amount * Employee.daysInSalaryMonth)} per month';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            0,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('Salary', style: context.text.titleMedium),
+              const SizedBox(height: 2),
+              Text(widget.employee.name, style: context.text.bodySmall),
+              AppSpacing.gapLg,
+              SegmentedButton<SalaryType>(
+                showSelectedIcon: false,
+                segments: <ButtonSegment<SalaryType>>[
+                  for (final SalaryType type in SalaryType.values)
+                    ButtonSegment<SalaryType>(
+                      value: type,
+                      label: Text(type.label),
+                    ),
+                ],
+                selected: <SalaryType>{_type},
+                onSelectionChanged: (Set<SalaryType> selection) =>
+                    setState(() => _type = selection.first),
+              ),
+              AppSpacing.gapLg,
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                ],
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: _type == SalaryType.monthly
+                      ? 'Monthly salary'
+                      : 'Per-day salary',
+                  prefixText: '₹ ',
+                  prefixIcon: const Icon(Icons.currency_rupee_rounded),
+                  helperText: _hint ?? 'Leave blank to skip',
+                ),
+              ),
+              AppSpacing.gapLg,
+              Row(
+                children: <Widget>[
+                  if (widget.employee.hasSalary) ...<Widget>[
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(
+                          const _SalaryResult(
+                            type: SalaryType.perDay,
+                            amount: null,
+                          ),
+                        ),
+                        child: const Text('Remove'),
+                      ),
+                    ),
+                    AppSpacing.wGapMd,
+                  ],
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(
+                        _SalaryResult(
+                          type: _type,
+                          amount: Validators.parseAmount(_controller.text),
+                        ),
+                      ),
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MonthCalendarCard extends StatelessWidget {
   const _MonthCalendarCard({
     required this.employee,
@@ -357,7 +628,12 @@ class _MonthCalendarCard extends StatelessWidget {
   final int year;
   final int month;
   final List<AttendanceRecord> records;
-  final void Function(DateTime day, AttendanceStatus? status, String? note)
+  final void Function(
+    DateTime day,
+    AttendanceStatus? status,
+    String? note,
+    double? amount,
+  )
   onEditDay;
 
   @override
@@ -488,7 +764,12 @@ class _CalendarCell extends StatelessWidget {
   final AttendanceRecord? record;
   final bool beforeJoining;
   final bool inFuture;
-  final void Function(DateTime day, AttendanceStatus? status, String? note)
+  final void Function(
+    DateTime day,
+    AttendanceStatus? status,
+    String? note,
+    double? amount,
+  )
   onTap;
 
   @override
@@ -502,7 +783,9 @@ class _CalendarCell extends StatelessWidget {
           '${AppDate.display(day)}'
           '${status == null ? '' : ' · ${status.label}'}',
       child: InkWell(
-        onTap: disabled ? null : () => onTap(day, status, record?.note),
+        onTap: disabled
+            ? null
+            : () => onTap(day, status, record?.note, record?.amount),
         borderRadius: BorderRadius.circular(AppSpacing.sm),
         child: Container(
           alignment: Alignment.center,
@@ -555,25 +838,32 @@ class _CalendarCell extends StatelessWidget {
 }
 
 class _DayEditResult {
-  const _DayEditResult({required this.status, this.note});
+  const _DayEditResult({required this.status, this.note, this.amount});
 
   final AttendanceStatus? status;
   final String? note;
+  final double? amount;
 }
 
 /// Bottom sheet for changing one day's status from the calendar.
 class _DayStatusSheet extends StatefulWidget {
   const _DayStatusSheet({
     required this.employeeName,
+    required this.perDaySalary,
     required this.day,
     required this.status,
     required this.note,
+    required this.amount,
   });
 
   final String employeeName;
+
+  /// The employee's daily rate, or null when no salary is on file.
+  final double? perDaySalary;
   final DateTime day;
   final AttendanceStatus? status;
   final String? note;
+  final double? amount;
 
   @override
   State<_DayStatusSheet> createState() => _DayStatusSheetState();
@@ -584,11 +874,24 @@ class _DayStatusSheetState extends State<_DayStatusSheet> {
   late final TextEditingController _noteController = TextEditingController(
     text: widget.note ?? '',
   );
+  late final TextEditingController _amountController = TextEditingController(
+    text: widget.amount == null
+        ? ''
+        : Money.plain(widget.amount!).replaceAll(',', ''),
+  );
 
   @override
   void dispose() {
     _noteController.dispose();
+    _amountController.dispose();
     super.dispose();
+  }
+
+  String? get _amountHint {
+    final status = _status;
+    final rate = widget.perDaySalary;
+    if (status == null || rate == null) return null;
+    return 'Default ${Money.format(rate * status.dayValue)} · edit to override';
   }
 
   @override
@@ -638,6 +941,23 @@ class _DayStatusSheetState extends State<_DayStatusSheet> {
                   counterText: '',
                 ),
               ),
+              if (_status != null) ...<Widget>[
+                AppSpacing.gapMd,
+                TextField(
+                  controller: _amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Amount (optional)',
+                    prefixText: '₹ ',
+                    helperText: _amountHint,
+                  ),
+                ),
+              ],
               AppSpacing.gapLg,
               Row(
                 children: <Widget>[
@@ -660,6 +980,9 @@ class _DayStatusSheetState extends State<_DayStatusSheet> {
                               _DayEditResult(
                                 status: _status,
                                 note: _noteController.text,
+                                amount: Validators.parseAmount(
+                                  _amountController.text,
+                                ),
                               ),
                             ),
                       child: const Text('Save'),
